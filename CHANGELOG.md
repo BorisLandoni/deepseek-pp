@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.7] - 2026-06-05
+
+### Fixed
+- **First character of every response was dropped (definitive fix)**: confirmed via raw SSE capture that DeepSeek emits the initial character(s) inside a stream-opening snapshot object `{"v":{"response":{"fragments":[{content:"C"}]}}}`, then APPENDs the rest. The parser ignored this snapshot because `v` was an object, not a string — so "Ciao" became "iao". `extractResponseTextFromParsed` now extracts the initial text from `response.fragments` (excluding thinking fragments).
+
+---
+
 ## [0.7.6] - 2026-06-05
 
 ### Added

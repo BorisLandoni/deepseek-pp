@@ -104,6 +104,14 @@ export function extractResponseTextFromParsed(parsed: any): string | null {
   if (!parsed.p && typeof parsed.v === 'string') {
     return parsed.v;
   }
+  // Format 1b: initial response snapshot — {"v":{"response":{...,"fragments":[{content:"C"}]}}}
+  // DeepSeek emits this once at the start of a stream. The very first character(s) of the
+  // answer live inside response.fragments[].content here; subsequent characters arrive as
+  // APPEND patches to response/fragments/N/content. Without this, the first chunk is dropped.
+  if (!parsed.p && parsed.v && typeof parsed.v === 'object' && !Array.isArray(parsed.v)) {
+    const initial = extractInitialResponseText(parsed.v);
+    if (initial) return initial;
+  }
   // Format 2: any operation (APPEND, SET, etc.) on a response text path with a string value.
   // DeepSeek may use SET to initialise the first character and APPEND for subsequent ones.
   // Being permissive about the operation is safe: text paths only ever receive text values.
@@ -141,6 +149,27 @@ function isResponseFragmentObjectPatch(parsed: any): boolean {
   if (typeof parsed?.p !== 'string') return false;
   if (!/^response\/fragments\/[-\d]+$/.test(parsed.p)) return false;
   return typeof parsed.v === 'object' && parsed.v !== null && !Array.isArray(parsed.v);
+}
+
+/**
+ * Extracts the initial response text from a stream-opening snapshot object of the form
+ * {"response":{"fragments":[{type:"RESPONSE",content:"C"}, ...]}}. Thinking/reasoning
+ * fragments are excluded so only the visible answer text is returned.
+ */
+function extractInitialResponseText(v: any): string | null {
+  const response = v?.response;
+  if (!response || typeof response !== 'object') return null;
+  const fragments = response.fragments;
+  if (!Array.isArray(fragments)) return null;
+  const text = fragments
+    .filter((frag: any) => {
+      const type = typeof frag?.type === 'string' ? frag.type.toUpperCase() : '';
+      return type !== 'THINK' && type !== 'THINKING' && type !== 'REASONING';
+    })
+    .map((frag: unknown) => extractFragmentText(frag))
+    .filter((part: string | null): part is string => part !== null)
+    .join('');
+  return text.length > 0 ? text : null;
 }
 
 function extractFragmentText(fragment: unknown): string | null {

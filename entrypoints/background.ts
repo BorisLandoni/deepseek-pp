@@ -583,7 +583,7 @@ async function handleMessage(
     }
 
     case 'AUTO_UPDATE_VIA_GIT': {
-      const { path } = message.payload as { path: string };
+      const { path, installPath } = message.payload as { path: string; installPath?: string };
       if (!path?.trim()) return { ok: false, error: 'no_path' };
 
       // Check that shell_exec tool is available
@@ -593,6 +593,11 @@ async function handleMessage(
 
       const broadcast = (status: string) =>
         chrome.runtime.sendMessage({ type: 'AUTO_UPDATE_PROGRESS', status }).catch(() => {});
+
+      // The dist output folder (always inside the repo)
+      const distPath = `${path}\\dist\\chrome-mv3`;
+      // If Chrome loads from a different folder, we copy dist there after building
+      const needsCopy = installPath?.trim() && installPath.trim().toLowerCase() !== distPath.toLowerCase();
 
       try {
         // Step 1: git pull
@@ -619,7 +624,24 @@ async function handleMessage(
           return { ok: false, error: buildResult.error?.message ?? buildResult.summary };
         }
 
-        // Step 3: reload extension
+        // Step 3 (optional): copy dist to Chrome's load folder if different
+        if (needsCopy) {
+          broadcast('copying');
+          const copyResult = await executeRuntimeToolCall({
+            name: 'shell_exec',
+            payload: {
+              command: `Copy-Item "${distPath}\\*" "${installPath!.trim()}\\" -Recurse -Force`,
+              timeout_ms: 30000,
+            },
+            raw: '',
+          }, 'auto_update');
+          if (!copyResult.ok) {
+            broadcast('error');
+            return { ok: false, error: copyResult.error?.message ?? copyResult.summary };
+          }
+        }
+
+        // Step 4: reload extension
         broadcast('reloading');
         setTimeout(() => chrome.runtime.reload(), 800);
         return { ok: true };

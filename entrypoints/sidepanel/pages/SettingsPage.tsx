@@ -672,13 +672,17 @@ function UpdateSection() {
   const [checkResult, setCheckResult] = useState<'ok' | 'error' | null>(null);
   const checkResultTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [repoPath, setRepoPath] = useState('');
+  const [installPath, setInstallPath] = useState('');
   const [autoUpdateStatus, setAutoUpdateStatus] = useState<string | null>(null);
   const version = chrome.runtime.getManifest().version;
 
-  // Load stored repo path
+  // Load stored paths
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_AUTO_UPDATE_PATH' })
       .then((r: { path: string }) => setRepoPath(r.path ?? ''))
+      .catch(() => {});
+    chrome.storage.local.get('deepseek_pp_install_path')
+      .then((d) => setInstallPath((d.deepseek_pp_install_path as string) ?? ''))
       .catch(() => {});
   }, []);
 
@@ -687,10 +691,11 @@ function UpdateSection() {
     const handler = (msg: { type?: string; status?: string }) => {
       if (msg.type !== 'AUTO_UPDATE_PROGRESS') return;
       switch (msg.status) {
-        case 'pulling': setAutoUpdateStatus(t.settingsAutoUpdatePulling); break;
-        case 'building': setAutoUpdateStatus(t.settingsAutoUpdateBuilding); break;
+        case 'pulling':   setAutoUpdateStatus(t.settingsAutoUpdatePulling); break;
+        case 'building':  setAutoUpdateStatus(t.settingsAutoUpdateBuilding); break;
+        case 'copying':   setAutoUpdateStatus('Copia file in corso…'); break;
         case 'reloading': setAutoUpdateStatus(t.settingsAutoUpdateReloading); break;
-        case 'error': setAutoUpdateStatus(null); break;
+        case 'error':     setAutoUpdateStatus(null); break;
       }
     };
     chrome.runtime.onMessage.addListener(handler);
@@ -702,11 +707,16 @@ function UpdateSection() {
     await chrome.runtime.sendMessage({ type: 'SET_AUTO_UPDATE_PATH', payload: { path: p } });
   };
 
+  const saveInstallPath = async (p: string) => {
+    setInstallPath(p);
+    await chrome.storage.local.set({ deepseek_pp_install_path: p });
+  };
+
   const handleAutoUpdate = async () => {
     setAutoUpdateStatus(t.settingsAutoUpdatePulling);
     const result: { ok: boolean; error?: string } = await chrome.runtime.sendMessage({
       type: 'AUTO_UPDATE_VIA_GIT',
-      payload: { path: repoPath.trim() },
+      payload: { path: repoPath.trim(), installPath: installPath.trim() || undefined },
     });
     if (!result.ok) {
       setAutoUpdateStatus(null);
@@ -838,6 +848,7 @@ function UpdateSection() {
           {t.settingsAutoUpdateSection}
         </div>
 
+        {/* Repo path */}
         <div className="space-y-1.5">
           <label className="text-[11px]" style={{ color: 'var(--ds-text-secondary)' }}>
             {t.settingsAutoUpdatePathLabel}
@@ -853,6 +864,25 @@ function UpdateSection() {
           />
           <p className="text-[10px]" style={{ color: 'var(--ds-text-tertiary)' }}>
             {t.settingsAutoUpdatePathHint}
+          </p>
+        </div>
+
+        {/* Chrome load folder (if different from dist\chrome-mv3 inside the repo) */}
+        <div className="space-y-1.5">
+          <label className="text-[11px]" style={{ color: 'var(--ds-text-secondary)' }}>
+            Cartella caricata da Chrome <span style={{ color: 'var(--ds-text-tertiary)' }}>(se diversa da dist\chrome-mv3)</span>
+          </label>
+          <input
+            type="text"
+            value={installPath}
+            onChange={(e) => setInstallPath(e.target.value)}
+            onBlur={(e) => saveInstallPath(e.target.value)}
+            placeholder="C:\...\Release\deepseek-plus-plus-X.X.X-chrome"
+            className="w-full px-3 py-2 text-xs rounded-lg border outline-none transition-colors focus:border-[var(--ds-blue)]"
+            style={{ background: 'var(--ds-bg)', borderColor: 'var(--ds-border)', color: 'var(--ds-text)' }}
+          />
+          <p className="text-[10px]" style={{ color: 'var(--ds-text-tertiary)' }}>
+            Dopo la build, i file vengono copiati qui prima del reload. Vedi Dettagli in chrome://extensions.
           </p>
         </div>
 

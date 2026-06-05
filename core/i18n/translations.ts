@@ -372,6 +372,7 @@ export interface Translations {
   settingsUpdateLastChecked: string;
   settingsUpdateNeverChecked: string;
   settingsUpdateDownload: string;
+  settingsUpdateError: string;
 
   // About credits
   aboutFork: string;
@@ -769,6 +770,7 @@ const it: Translations = {
   settingsUpdateLastChecked: 'Ultimo controllo: {time}',
   settingsUpdateNeverChecked: 'Non ancora verificato',
   settingsUpdateDownload: 'Scarica v{version}',
+  settingsUpdateError: 'Errore di rete',
 
   // About credits
   aboutFork: 'Fork di',
@@ -1166,6 +1168,7 @@ const en: Translations = {
   settingsUpdateLastChecked: 'Last checked: {time}',
   settingsUpdateNeverChecked: 'Never checked',
   settingsUpdateDownload: 'Download v{version}',
+  settingsUpdateError: 'Network error',
 
   // About credits
   aboutFork: 'Fork of',

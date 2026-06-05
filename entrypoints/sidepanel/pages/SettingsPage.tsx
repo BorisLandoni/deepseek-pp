@@ -672,6 +672,8 @@ function UpdateSection() {
   const { t } = useLanguage();
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState<'ok' | 'error' | null>(null);
+  const checkResultTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const version = chrome.runtime.getManifest().version;
 
   // Load cached update info on mount
@@ -683,13 +685,19 @@ function UpdateSection() {
 
   const handleCheck = async () => {
     setChecking(true);
+    setCheckResult(null);
+    if (checkResultTimer.current) clearTimeout(checkResultTimer.current);
     try {
       const info: UpdateInfo | null = await chrome.runtime.sendMessage({ type: 'FORCE_CHECK_FOR_UPDATE' });
-      setUpdateInfo(info);
+      // Always update state — even if result is identical, the checkedAt timestamp changes
+      setUpdateInfo(info ?? { available: false, latestVersion: version, currentVersion: version, downloadUrl: '', releaseUrl: '', checkedAt: Date.now() });
+      setCheckResult('ok');
     } catch {
-      // ignore
+      setCheckResult('error');
     } finally {
       setChecking(false);
+      // Auto-clear the result indicator after 4 seconds
+      checkResultTimer.current = setTimeout(() => setCheckResult(null), 4000);
     }
   };
 
@@ -755,15 +763,30 @@ function UpdateSection() {
             onClick={handleCheck}
             disabled={checking}
             className="ds-btn-secondary px-3 py-1.5 text-[11px] font-medium rounded-lg transition-all duration-150 disabled:opacity-50 flex items-center gap-1.5"
+            style={checkResult === 'ok' ? { borderColor: 'var(--ds-success)', color: 'var(--ds-success)' } : checkResult === 'error' ? { borderColor: 'var(--ds-danger)', color: 'var(--ds-danger)' } : undefined}
           >
             {checking ? (
               <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : checkResult === 'ok' ? (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : checkResult === 'error' ? (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
             ) : (
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             )}
-            {checking ? t.settingsUpdateChecking : t.settingsUpdateCheck}
+            {checking
+              ? t.settingsUpdateChecking
+              : checkResult === 'ok'
+                ? (updateInfo?.available ? t.settingsUpdateAvailable.replace('{version}', updateInfo.latestVersion) : t.settingsUpdateUpToDate)
+                : checkResult === 'error'
+                  ? t.settingsUpdateError
+                  : t.settingsUpdateCheck}
           </button>
         </div>
 

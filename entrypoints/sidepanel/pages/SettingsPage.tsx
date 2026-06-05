@@ -414,6 +414,9 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* Web access */}
+      <WebAccessSection />
+
       {/* Background */}
       <section className="space-y-3">
         <h2 className="text-[13px] font-medium" style={{ color: 'var(--ds-text)' }}>
@@ -904,6 +907,103 @@ function UpdateSection() {
         )}
       </div>
 
+    </section>
+  );
+}
+
+function WebAccessSection() {
+  const { language } = useLanguage();
+  const [granted, setGranted] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const ALL_ORIGINS = ['http://*/*', 'https://*/*'];
+
+  const checkGranted = () => {
+    chrome.permissions.contains({ origins: ALL_ORIGINS })
+      .then(setGranted)
+      .catch(() => setGranted(false));
+  };
+
+  useEffect(() => { checkGranted(); }, []);
+
+  const handleGrant = async () => {
+    setBusy(true);
+    try {
+      // chrome.permissions.request requires a user gesture — this button click qualifies.
+      const ok = await chrome.permissions.request({ origins: ALL_ORIGINS });
+      setGranted(ok);
+    } catch {
+      setGranted(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRevoke = async () => {
+    setBusy(true);
+    try {
+      await chrome.permissions.remove({ origins: ALL_ORIGINS });
+      setGranted(false);
+    } catch {} finally {
+      setBusy(false);
+    }
+  };
+
+  const txt = language === 'it'
+    ? {
+        section: 'Accesso web',
+        title: 'Lettura pagine web (web_fetch / web_search)',
+        descGranted: 'Concesso. L\'assistente può leggere qualsiasi pagina web e fare ricerche.',
+        descMissing: 'Necessario per far leggere all\'assistente pagine esterne a DeepSeek. Senza questo permesso il fetch viene bloccato dal CORS.',
+        grant: 'Abilita accesso a tutti i siti',
+        revoke: 'Revoca accesso',
+        checking: 'Verifica…',
+      }
+    : {
+        section: 'Web access',
+        title: 'Read web pages (web_fetch / web_search)',
+        descGranted: 'Granted. The assistant can read any web page and run searches.',
+        descMissing: 'Required so the assistant can read pages outside DeepSeek. Without it, fetches are blocked by CORS.',
+        grant: 'Enable access to all sites',
+        revoke: 'Revoke access',
+        checking: 'Checking…',
+      };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-[13px] font-medium" style={{ color: 'var(--ds-text)' }}>{txt.section}</h2>
+      <div className="ds-surface-panel rounded-xl p-4 space-y-3">
+        <div className="flex items-start gap-2">
+          <span
+            className="shrink-0 mt-0.5 w-2 h-2 rounded-full"
+            style={{ background: granted ? 'var(--ds-success, #16a34a)' : 'var(--ds-warning, #f59e0b)' }}
+          />
+          <div>
+            <div className="text-xs font-medium" style={{ color: 'var(--ds-text)' }}>{txt.title}</div>
+            <div className="text-[11px] mt-0.5" style={{ color: 'var(--ds-text-tertiary)' }}>
+              {granted ? txt.descGranted : txt.descMissing}
+            </div>
+          </div>
+        </div>
+
+        {granted ? (
+          <button
+            onClick={handleRevoke}
+            disabled={busy}
+            className="ds-btn-secondary w-full py-2 text-[11px] font-medium rounded-lg transition-all duration-150 disabled:opacity-50"
+          >
+            {busy ? txt.checking : txt.revoke}
+          </button>
+        ) : (
+          <button
+            onClick={handleGrant}
+            disabled={busy}
+            className="ds-btn-primary w-full py-2.5 text-[12px] font-medium text-white rounded-xl transition-all duration-150 disabled:opacity-50"
+          >
+            {busy ? txt.checking : txt.grant}
+          </button>
+        )}
+      </div>
     </section>
   );
 }

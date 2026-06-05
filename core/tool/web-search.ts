@@ -350,14 +350,15 @@ async function performWebFetch(call: ToolCall): Promise<ToolResult> {
       name: call.name,
       summary: 'Failed to fetch page',
       detail: isPermissionError
-        ? `Cannot access ${url}: host permission not granted.`
+        ? `Cannot access ${url}: the extension does not have permission for ${parsedUrl.origin} (the browser blocked the request with a CORS error). Do NOT retry. Tell the user to open the extension Settings and click "Enable access to all sites" under Web access — or set Site access to "On all sites" in chrome://extensions.`
         : message,
       error: {
         code: isPermissionError ? 'fetch_permission_denied' : 'fetch_failed',
         message: isPermissionError
-          ? `Host permission for ${parsedUrl.origin} is not granted.`
+          ? `Host permission for ${parsedUrl.origin} is not granted. The user must enable web access in the extension settings. Retrying will not help.`
           : message,
-        retryable: isPermissionError,
+        // Not retryable: retrying without the permission produces the same CORS failure.
+        retryable: false,
       },
     };
   }

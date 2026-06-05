@@ -6,6 +6,16 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.6] - 2026-06-05
+
+### Added
+- **Web access setting**: new "Web access" section in Settings with a one-click "Enable access to all sites" button. Grants the optional host permission (`http://*/*`, `https://*/*`) needed for `web_fetch` / `web_search` to read pages outside DeepSeek. Without it, the browser blocks fetches with a CORS error.
+
+### Fixed
+- `web_fetch` permission errors are now non-retryable and return a clear, actionable message (telling the user to enable web access) instead of causing the model to loop on failed retries.
+
+---
+
 ## [0.7.5] - 2026-06-05
 
 ### Fixed

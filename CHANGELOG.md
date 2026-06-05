@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.8] - 2026-06-05
+
+### Fixed
+- **Skill edit button appeared to do nothing**: the create/edit form renders near the top of the Skill page, so on a long, scrolled list it opened off-screen. The form now scrolls into view when opened and shows an "Edit · /skill-name" header so it's clear which skill is being edited.
+
+---
+
 ## [0.7.7] - 2026-06-05
 
 ### Fixed

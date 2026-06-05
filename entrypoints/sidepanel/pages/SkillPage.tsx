@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GitHubSkillSource, GitHubSkillUpdatePreview, Skill } from '../../../core/types';
 import GitHubSkillImportPanel from '../components/GitHubSkillImportPanel';
 import SkillCard from '../components/SkillCard';
@@ -50,6 +50,16 @@ export default function SkillPage() {
   const [showImport, setShowImport] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [sourceActions, setSourceActions] = useState<Record<string, SourceActionState>>({});
+  const formRef = useRef<HTMLDivElement>(null);
+
+  // When the create/edit form opens, bring it into view. The form renders near the top
+  // of a potentially long, scrolled list, so without this it can open off-screen and
+  // appear as if the edit button did nothing.
+  useEffect(() => {
+    if (showForm && formRef.current) {
+      formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [showForm, editingSkill]);
 
   const load = async () => {
     const [list, sources]: [Skill[], GitHubSkillSource[]] = await Promise.all([
@@ -227,7 +237,12 @@ export default function SkillPage() {
       )}
 
       {showForm && (
-        <div className="animate-slide-down">
+        <div ref={formRef} className="animate-slide-down scroll-mt-4">
+          {editingSkill && (
+            <div className="text-[11px] mb-2 px-1 font-medium" style={{ color: 'var(--ds-blue)' }}>
+              {t.edit} · /{editingSkill.name}
+            </div>
+          )}
           <SkillForm initialSkill={editingSkill} onSave={handleSave} onCancel={closeForm} />
         </div>
       )}

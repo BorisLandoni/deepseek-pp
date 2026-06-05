@@ -5,7 +5,8 @@ const STORAGE_HEADERS_KEY = 'deepseekCachedClientHeaders';
 
 export async function getChatEnabled(): Promise<boolean> {
   const data = await chrome.storage.local.get(STORAGE_KEY) as Record<string, unknown>;
-  return data[STORAGE_KEY] === true;
+  // Default to enabled when no value has been stored yet
+  return data[STORAGE_KEY] !== false;
 }
 
 export async function setChatEnabled(enabled: boolean): Promise<void> {

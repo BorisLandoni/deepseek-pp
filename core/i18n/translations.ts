@@ -362,6 +362,17 @@ export interface Translations {
   updateDismiss: string;
   updateInstallHint: string;
 
+  // Settings update section
+  settingsUpdateSection: string;
+  settingsUpdateCurrent: string;
+  settingsUpdateCheck: string;
+  settingsUpdateChecking: string;
+  settingsUpdateUpToDate: string;
+  settingsUpdateAvailable: string;
+  settingsUpdateLastChecked: string;
+  settingsUpdateNeverChecked: string;
+  settingsUpdateDownload: string;
+
   // About credits
   aboutFork: string;
   aboutTranslation: string;
@@ -748,6 +759,17 @@ const it: Translations = {
   updateDismiss: 'Ignora',
   updateInstallHint: 'Scaricato! Estrai lo zip, poi in chrome://extensions ricarica l\'estensione dalla nuova cartella.',
 
+  // Settings update section
+  settingsUpdateSection: 'Aggiornamenti',
+  settingsUpdateCurrent: 'Versione installata',
+  settingsUpdateCheck: 'Cerca aggiornamenti',
+  settingsUpdateChecking: 'Controllo in corso…',
+  settingsUpdateUpToDate: '✓ Sei aggiornato',
+  settingsUpdateAvailable: '↓ Disponibile v{version}',
+  settingsUpdateLastChecked: 'Ultimo controllo: {time}',
+  settingsUpdateNeverChecked: 'Non ancora verificato',
+  settingsUpdateDownload: 'Scarica v{version}',
+
   // About credits
   aboutFork: 'Fork di',
   aboutTranslation: 'Traduzione IT/EN: Boris Landoni & AI',
@@ -1133,6 +1155,17 @@ const en: Translations = {
   updateDownload: 'Download & update',
   updateDismiss: 'Dismiss',
   updateInstallHint: 'Downloaded! Extract the zip, then in chrome://extensions reload the extension from the new folder.',
+
+  // Settings update section
+  settingsUpdateSection: 'Updates',
+  settingsUpdateCurrent: 'Installed version',
+  settingsUpdateCheck: 'Check for updates',
+  settingsUpdateChecking: 'Checking…',
+  settingsUpdateUpToDate: '✓ You are up to date',
+  settingsUpdateAvailable: '↓ Available v{version}',
+  settingsUpdateLastChecked: 'Last checked: {time}',
+  settingsUpdateNeverChecked: 'Never checked',
+  settingsUpdateDownload: 'Download v{version}',
 
   // About credits
   aboutFork: 'Fork of',

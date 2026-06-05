@@ -6,6 +6,20 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.6.4] - 2026-06-05
+
+### Added
+- **Check for updates** section in Settings (before Language)
+  - Shows installed version and latest available version
+  - "Check for updates" button forces an immediate check (bypasses 1-hour cache)
+  - Shows ✓ Up to date or ↓ Available vX.X.X with download button
+  - Shows last checked time
+
+### Fixed
+- Automatic update banner (yellow bar) now only appears when a newer version exists on GitHub
+
+---
+
 ## [0.6.3] - 2026-06-05
 
 ### Added

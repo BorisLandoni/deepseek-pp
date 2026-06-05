@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { UpdateInfo } from '../../../core/update/checker';
 import {
   DEFAULT_BACKGROUND_OPACITY,
   clampBackgroundOpacity,
@@ -368,6 +369,9 @@ export default function SettingsPage() {
 
   return (
     <div className="p-4 space-y-5">
+      {/* Updates */}
+      <UpdateSection />
+
       {/* Language */}
       <section className="space-y-3">
         <h2 className="text-[13px] font-medium" style={{ color: 'var(--ds-text)' }}>
@@ -661,6 +665,110 @@ export default function SettingsPage() {
         <ScenarioManager />
       </section>
     </div>
+  );
+}
+
+function UpdateSection() {
+  const { t } = useLanguage();
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checking, setChecking] = useState(false);
+  const version = chrome.runtime.getManifest().version;
+
+  // Load cached update info on mount
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'GET_UPDATE_INFO' })
+      .then((info: UpdateInfo | null) => setUpdateInfo(info))
+      .catch(() => {});
+  }, []);
+
+  const handleCheck = async () => {
+    setChecking(true);
+    try {
+      const info: UpdateInfo | null = await chrome.runtime.sendMessage({ type: 'FORCE_CHECK_FOR_UPDATE' });
+      setUpdateInfo(info);
+    } catch {
+      // ignore
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (updateInfo?.downloadUrl) {
+      await chrome.tabs.create({ url: updateInfo.downloadUrl, active: false });
+    }
+  };
+
+  const formatCheckedTime = (ts: number) =>
+    new Date(ts).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-[13px] font-medium" style={{ color: 'var(--ds-text)' }}>
+        {t.settingsUpdateSection}
+      </h2>
+      <div className="ds-surface-panel rounded-xl p-4 space-y-3">
+
+        {/* Current version row */}
+        <div className="flex items-center justify-between">
+          <span className="text-[11px]" style={{ color: 'var(--ds-text-secondary)' }}>
+            {t.settingsUpdateCurrent}
+          </span>
+          <span className="text-[12px] font-mono font-semibold" style={{ color: 'var(--ds-blue)' }}>
+            v{version}
+          </span>
+        </div>
+
+        {/* Status row */}
+        {updateInfo && (
+          <div className="flex items-center justify-between">
+            <span
+              className="text-[12px] font-medium"
+              style={{ color: updateInfo.available ? 'var(--ds-warning)' : 'var(--ds-success)' }}
+            >
+              {updateInfo.available
+                ? t.settingsUpdateAvailable.replace('{version}', updateInfo.latestVersion)
+                : t.settingsUpdateUpToDate}
+            </span>
+            {updateInfo.available && (
+              <button
+                onClick={handleDownload}
+                className="ds-btn-primary px-3 py-1 text-[11px] font-medium text-white rounded-lg transition-all duration-150 flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                {t.settingsUpdateDownload.replace('{version}', updateInfo.latestVersion)}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Last checked + button */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px]" style={{ color: 'var(--ds-text-tertiary)' }}>
+            {updateInfo?.checkedAt
+              ? t.settingsUpdateLastChecked.replace('{time}', formatCheckedTime(updateInfo.checkedAt))
+              : t.settingsUpdateNeverChecked}
+          </span>
+          <button
+            onClick={handleCheck}
+            disabled={checking}
+            className="ds-btn-secondary px-3 py-1.5 text-[11px] font-medium rounded-lg transition-all duration-150 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {checking ? (
+              <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            {checking ? t.settingsUpdateChecking : t.settingsUpdateCheck}
+          </button>
+        </div>
+
+      </div>
+    </section>
   );
 }
 

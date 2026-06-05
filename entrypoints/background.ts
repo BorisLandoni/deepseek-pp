@@ -40,7 +40,7 @@ import { getBackgroundConfig, saveBackgroundConfig, clearBackgroundConfig } from
 import { getPetConfig, savePetConfig, clearPetConfig } from '../core/pet/store';
 import { getExtensionVersion } from '../core/version';
 import { parseSkillCommand } from '../core/skill/parser';
-import { maybeCheckForUpdate, getStoredUpdateInfo } from '../core/update/checker';
+import { maybeCheckForUpdate, checkForUpdate, getStoredUpdateInfo, setStoredUpdateInfo } from '../core/update/checker';
 import { getSyncConfig, saveSyncConfig } from '../core/sync/config';
 import { webdavTest, webdavMkcol, webdavGet, webdavPut } from '../core/sync/webdav-client';
 import { clearToolCallHistory, getToolCallHistory } from '../core/tool/history';
@@ -560,6 +560,13 @@ async function handleMessage(
 
     case 'CHECK_FOR_UPDATE':
       return maybeCheckForUpdate(getExtensionVersion());
+
+    case 'FORCE_CHECK_FOR_UPDATE':
+      // Bypasses the 1-hour cache — triggered by the manual button in Settings
+      return checkForUpdate(getExtensionVersion()).then(async (info) => {
+        if (info) await setStoredUpdateInfo(info);
+        return info;
+      });
 
     case 'GET_UPDATE_INFO':
       return getStoredUpdateInfo();

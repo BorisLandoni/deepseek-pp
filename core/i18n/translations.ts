@@ -401,6 +401,12 @@ export interface Translations {
   chatSkillActive: string;
   chatSkillNotFound: string;
   chatSkillHint: string;
+  chatLoginStep1: string;
+  chatLoginStep2: string;
+  chatLoginStep3: string;
+  chatLoginOpen: string;
+  chatLoginRetry: string;
+  chatLoginWaiting: string;
 
   // Onboarding
   onboardingTitle: string;
@@ -810,6 +816,12 @@ const it: Translations = {
   chatSkillActive: 'Skill attiva: /{name}',
   chatSkillNotFound: 'Skill /{name} non trovata',
   chatSkillHint: 'Digita / per usare una Skill',
+  chatLoginStep1: '1. Apri chat.deepseek.com',
+  chatLoginStep2: '2. Accedi al tuo account (se non sei già loggato)',
+  chatLoginStep3: '3. Invia qualsiasi messaggio — l\'estensione catturerà le credenziali automaticamente',
+  chatLoginOpen: 'Apri DeepSeek',
+  chatLoginRetry: 'Ho inviato un messaggio →',
+  chatLoginWaiting: 'In attesa delle credenziali…',
 
   // Onboarding
   onboardingTitle: 'Benvenuto in DeepSeek++',
@@ -1219,6 +1231,12 @@ const en: Translations = {
   chatSkillActive: 'Active skill: /{name}',
   chatSkillNotFound: 'Skill /{name} not found',
   chatSkillHint: 'Type / to use a Skill',
+  chatLoginStep1: '1. Open chat.deepseek.com',
+  chatLoginStep2: '2. Log in to your account (if not already logged in)',
+  chatLoginStep3: '3. Send any message — the extension will capture your credentials automatically',
+  chatLoginOpen: 'Open DeepSeek',
+  chatLoginRetry: 'I sent a message →',
+  chatLoginWaiting: 'Waiting for credentials…',
 
   // Onboarding
   onboardingTitle: 'Welcome to DeepSeek++',

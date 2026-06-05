@@ -606,7 +606,7 @@ async function handleMessage(
           name: 'shell_exec',
           payload: { command: `git -C "${path}" pull origin main`, timeout_ms: 60000 },
           raw: '',
-        }, 'auto_update');
+        }, 'sidepanel_chat');
         if (!pullResult.ok) {
           broadcast('error');
           return { ok: false, error: pullResult.error?.message ?? pullResult.summary };
@@ -618,7 +618,7 @@ async function handleMessage(
           name: 'shell_exec',
           payload: { command: `Set-Location "${path}"; npm run build:chrome`, timeout_ms: 180000 },
           raw: '',
-        }, 'auto_update');
+        }, 'sidepanel_chat');
         if (!buildResult.ok) {
           broadcast('error');
           return { ok: false, error: buildResult.error?.message ?? buildResult.summary };
@@ -634,7 +634,7 @@ async function handleMessage(
               timeout_ms: 30000,
             },
             raw: '',
-          }, 'auto_update');
+          }, 'sidepanel_chat');
           if (!copyResult.ok) {
             broadcast('error');
             return { ok: false, error: copyResult.error?.message ?? copyResult.summary };

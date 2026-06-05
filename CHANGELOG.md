@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.10] - 2026-06-05
+
+### Changed
+- **web_fetch diagnostics**: added a host-permission pre-check that distinguishes "web access not active (reinstall needed)" from a genuine network failure, with a precise actionable message. Timeouts are now reported distinctly (extended to 25s). The real fetch error is logged to the service worker console (`[DPP-web_fetch]`).
+
+---
+
 ## [0.7.9] - 2026-06-05
 
 ### Fixed

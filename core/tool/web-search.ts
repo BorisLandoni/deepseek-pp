@@ -293,13 +293,31 @@ async function performWebFetch(call: ToolCall): Promise<ToolResult> {
     };
   }
 
+  // Definitive permission pre-check: distinguishes "host permission not active"
+  // (needs reinstall) from a genuine network failure. Without this, a CORS block and a
+  // timeout both surface as a vague "Failed to fetch".
+  const hasHostPermission = await checkHostPermission(parsedUrl.origin);
+  if (!hasHostPermission) {
+    return {
+      ok: false,
+      name: call.name,
+      summary: 'Web access not active',
+      detail: `The extension does not have active host access for ${parsedUrl.origin}. Do NOT retry. Tell the user to REMOVE and RE-ADD the extension in chrome://extensions (loading from dist\\chrome-mv3), then accept the "read all sites" prompt. A simple reload is not enough after a manifest permission change.`,
+      error: {
+        code: 'fetch_permission_inactive',
+        message: `Host permission for ${parsedUrl.origin} is not active. The user must remove and reinstall the extension.`,
+        retryable: false,
+      },
+    };
+  }
+
   try {
     const response = await fetch(url, {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(25_000),
     });
 
     if (!response.ok) {
@@ -339,28 +357,45 @@ async function performWebFetch(call: ToolCall): Promise<ToolResult> {
       output: { url, content: outputText, contentType, truncated } as unknown as JsonValue,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
+    const message = isTimeout
+      ? 'Request timed out after 25 seconds'
+      : error instanceof Error ? error.message : String(error);
     const isPermissionError =
-      message.includes('Failed to fetch') ||
-      message.includes('NetworkError') ||
-      message.includes('opaque') ||
-      message.includes('status 0');
+      !isTimeout && (
+        message.includes('Failed to fetch') ||
+        message.includes('NetworkError') ||
+        message.includes('opaque') ||
+        message.includes('status 0')
+      );
+    // Surface the real error in the service worker console for diagnosis.
+    console.error(`[DPP-web_fetch] ${parsedUrl.href} failed: ${message}`, error);
     return {
       ok: false,
       name: call.name,
-      summary: 'Failed to fetch page',
+      summary: isTimeout ? 'Page fetch timed out' : 'Failed to fetch page',
       detail: isPermissionError
-        ? `Cannot access ${url}: the extension does not have permission for ${parsedUrl.origin} (the browser blocked the request with a CORS error). Do NOT retry. Tell the user to open the extension Settings and click "Enable access to all sites" under Web access — or set Site access to "On all sites" in chrome://extensions.`
-        : message,
+        ? `Cannot access ${url}: the browser blocked the request (CORS / missing host permission). Do NOT retry. Tell the user to REMOVE and RE-ADD the extension from dist\\chrome-mv3 in chrome://extensions.`
+        : isTimeout
+          ? `The page ${url} did not respond within 25 seconds. It may be slow or blocking automated requests. You may inform the user and suggest trying again.`
+          : `Network error while fetching ${url}: ${message}`,
       error: {
-        code: isPermissionError ? 'fetch_permission_denied' : 'fetch_failed',
-        message: isPermissionError
-          ? `Host permission for ${parsedUrl.origin} is not granted. The user must enable web access in the extension settings. Retrying will not help.`
-          : message,
-        // Not retryable: retrying without the permission produces the same CORS failure.
+        code: isPermissionError ? 'fetch_permission_denied' : isTimeout ? 'fetch_timeout' : 'fetch_failed',
+        message,
         retryable: false,
       },
     };
+  }
+}
+
+/** Returns true if the extension currently has active host access for the given origin. */
+async function checkHostPermission(origin: string): Promise<boolean> {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.permissions?.contains) return true;
+    return await chrome.permissions.contains({ origins: [`${origin}/*`] });
+  } catch {
+    // If the check itself fails, don't block the fetch — let it try and surface a real error.
+    return true;
   }
 }
 

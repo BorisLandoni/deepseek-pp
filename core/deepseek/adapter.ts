@@ -346,6 +346,8 @@ async function readCompletionStream(response: Response): Promise<ModelTurn> {
     buffer = buffer.slice(boundary + 2);
   }
 
+  // Flush any remaining bytes held by the TextDecoder (multi-byte UTF-8 chars split across chunks)
+  buffer += decoder.decode();
   if (buffer.trim()) consumeSSEText(buffer, summary);
   return summary;
 }
@@ -378,6 +380,8 @@ async function readCompletionStreamWithCallbacks(
     }
   }
 
+  // Flush any remaining bytes held by the TextDecoder (multi-byte UTF-8 chars split across chunks)
+  buffer += decoder.decode();
   if (buffer.trim()) {
     const prevLen = summary.assistantText.length;
     consumeSSEText(buffer, summary);

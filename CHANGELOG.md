@@ -6,6 +6,15 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.6.6] - 2026-06-05
+
+### Fixed
+- **Sidebar chat: last few characters missing from responses** — two root causes fixed:
+  1. `TextDecoder` was not flushed after the stream loop: multi-byte UTF-8 characters (e.g. Italian `è`, `à`, `ù`) split across chunk boundaries could lose their final bytes
+  2. ChatPage discarded the complete text carried by the `done: true` message; it now uses it to sync the final message, restoring any characters dropped during streaming
+
+---
+
 ## [0.6.5] - 2026-06-05
 
 ### Added

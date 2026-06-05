@@ -46,7 +46,21 @@ export default function ChatPage() {
       if (msg.type === 'AUTH_STATUS_CHANGED') { setHasToken(msg.hasToken ?? false); return; }
       if (msg.type === 'CHAT_STREAM_CHUNK') {
         if (msg.error) { setError(msg.error); setIsStreaming(false); return; }
-        if (msg.done) { setIsStreaming(false); return; }
+        if (msg.done) {
+          setIsStreaming(false);
+          // Sync final text: background sends the authoritative complete text with done=true.
+          // This ensures any characters dropped during streaming are restored.
+          if (msg.text) {
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === 'assistant') {
+                return [...prev.slice(0, -1), { role: 'assistant', text: msg.text! }];
+              }
+              return prev;
+            });
+          }
+          return;
+        }
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'assistant') {

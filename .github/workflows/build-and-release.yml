@@ -11,20 +11,20 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Install dependencies
         run: npm ci
@@ -36,6 +36,19 @@ jobs:
         id: pkg
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
+      - name: Extract changelog section for this version
+        id: changelog
+        run: |
+          VERSION="${{ steps.pkg.outputs.version }}"
+          # Extract the block between ## [VERSION] and the next ## [
+          NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+          fi
+          # Write to a temp file to handle multiline properly
+          echo "$NOTES" > /tmp/release_notes.md
+          echo "notes_file=/tmp/release_notes.md" >> $GITHUB_OUTPUT
+
       - name: Delete existing release with same tag (if any)
         continue-on-error: true
         run: gh release delete "v${{ steps.pkg.outputs.version }}" --yes --cleanup-tag
@@ -46,22 +59,7 @@ jobs:
         run: |
           gh release create "v${{ steps.pkg.outputs.version }}" \
             --title "DeepSeek++ v${{ steps.pkg.outputs.version }}" \
-            --notes "$(cat <<'EOF'
-          ## DeepSeek++ v${{ steps.pkg.outputs.version }}
-
-          Built automatically from commit [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}).
-
-          ### Installazione
-          1. Scarica il file `.zip` qui sotto
-          2. Estrai in una cartella
-          3. Apri Chrome → `chrome://extensions` → **Modalità sviluppatore** ON
-          4. Clicca **"Carica estensione non pacchettizzata"** → seleziona la cartella estratta
-
-          ### Credits
-          - Fork originale: [zhu1090093659/deepseek-pp](https://github.com/zhu1090093659/deepseek-pp)
-          - Traduzione IT/EN: Boris Landoni & AI
-          EOF
-          )" \
+            --notes-file /tmp/release_notes.md \
             --latest \
             dist/deepseek-plus-plus-${{ steps.pkg.outputs.version }}-chrome.zip
         env:

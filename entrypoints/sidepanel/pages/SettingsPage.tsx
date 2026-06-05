@@ -674,7 +674,50 @@ function UpdateSection() {
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<'ok' | 'error' | null>(null);
   const checkResultTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [repoPath, setRepoPath] = useState('');
+  const [autoUpdateStatus, setAutoUpdateStatus] = useState<string | null>(null);
   const version = chrome.runtime.getManifest().version;
+
+  // Load stored repo path
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'GET_AUTO_UPDATE_PATH' })
+      .then((r: { path: string }) => setRepoPath(r.path ?? ''))
+      .catch(() => {});
+  }, []);
+
+  // Listen for auto-update progress broadcasts
+  useEffect(() => {
+    const handler = (msg: { type?: string; status?: string }) => {
+      if (msg.type !== 'AUTO_UPDATE_PROGRESS') return;
+      switch (msg.status) {
+        case 'pulling': setAutoUpdateStatus(t.settingsAutoUpdatePulling); break;
+        case 'building': setAutoUpdateStatus(t.settingsAutoUpdateBuilding); break;
+        case 'reloading': setAutoUpdateStatus(t.settingsAutoUpdateReloading); break;
+        case 'error': setAutoUpdateStatus(null); break;
+      }
+    };
+    chrome.runtime.onMessage.addListener(handler);
+    return () => chrome.runtime.onMessage.removeListener(handler);
+  }, [t]);
+
+  const saveRepoPath = async (p: string) => {
+    setRepoPath(p);
+    await chrome.runtime.sendMessage({ type: 'SET_AUTO_UPDATE_PATH', payload: { path: p } });
+  };
+
+  const handleAutoUpdate = async () => {
+    setAutoUpdateStatus(t.settingsAutoUpdatePulling);
+    const result: { ok: boolean; error?: string } = await chrome.runtime.sendMessage({
+      type: 'AUTO_UPDATE_VIA_GIT',
+      payload: { path: repoPath.trim() },
+    });
+    if (!result.ok) {
+      setAutoUpdateStatus(null);
+      if (result.error === 'no_shell') alert(t.settingsAutoUpdateNoShell);
+      else alert(`${t.settingsAutoUpdateErrorShell}\n\n${result.error ?? ''}`);
+    }
+    // On success the extension reloads itself — no further UI needed
+  };
 
   // Load cached update info on mount
   useEffect(() => {
@@ -791,6 +834,49 @@ function UpdateSection() {
         </div>
 
       </div>
+
+      {/* Auto-update via Shell MCP */}
+      <div className="ds-surface-panel rounded-xl p-4 space-y-3">
+        <div className="text-[12px] font-medium" style={{ color: 'var(--ds-text)' }}>
+          {t.settingsAutoUpdateSection}
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[11px]" style={{ color: 'var(--ds-text-secondary)' }}>
+            {t.settingsAutoUpdatePathLabel}
+          </label>
+          <input
+            type="text"
+            value={repoPath}
+            onChange={(e) => setRepoPath(e.target.value)}
+            onBlur={(e) => saveRepoPath(e.target.value)}
+            placeholder={t.settingsAutoUpdatePathPlaceholder}
+            className="w-full px-3 py-2 text-xs rounded-lg border outline-none transition-colors focus:border-[var(--ds-blue)]"
+            style={{ background: 'var(--ds-bg)', borderColor: 'var(--ds-border)', color: 'var(--ds-text)' }}
+          />
+          <p className="text-[10px]" style={{ color: 'var(--ds-text-tertiary)' }}>
+            {t.settingsAutoUpdatePathHint}
+          </p>
+        </div>
+
+        {autoUpdateStatus ? (
+          <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--ds-blue)' }}>
+            <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0" />
+            {autoUpdateStatus}
+          </div>
+        ) : (
+          <button
+            onClick={handleAutoUpdate}
+            disabled={!repoPath.trim() || !updateInfo?.available}
+            className="w-full ds-btn-primary py-2.5 text-[12px] font-medium text-white rounded-xl transition-all duration-150 disabled:opacity-40"
+          >
+            {updateInfo?.available
+              ? t.settingsAutoUpdateButton
+              : `${t.settingsAutoUpdateButton} — ${t.settingsUpdateUpToDate}`}
+          </button>
+        )}
+      </div>
+
     </section>
   );
 }

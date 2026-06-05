@@ -6,6 +6,19 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.6.9] - 2026-06-05
+
+### Added
+- **Auto-update via Shell MCP** in Settings → Updates:
+  - Configure the local repo path once (e.g. `C:\Users\...\deepseek-pp`)
+  - When a new version is available, click "⚡ Aggiorna automaticamente"
+  - Runs `git pull origin main` + `npm run build:chrome` via Shell MCP
+  - Calls `chrome.runtime.reload()` — no Chrome restart needed
+  - Requires Shell MCP active (configure in the MCP page)
+  - Live progress: pulling → building → reloading
+
+---
+
 ## [0.6.7] - 2026-06-05
 
 ### Fixed

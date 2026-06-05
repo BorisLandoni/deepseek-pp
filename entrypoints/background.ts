@@ -571,6 +571,64 @@ async function handleMessage(
     case 'GET_UPDATE_INFO':
       return getStoredUpdateInfo();
 
+    case 'GET_AUTO_UPDATE_PATH': {
+      const data = await chrome.storage.local.get('deepseek_pp_auto_update_path');
+      return { path: (data.deepseek_pp_auto_update_path as string | undefined) ?? '' };
+    }
+
+    case 'SET_AUTO_UPDATE_PATH': {
+      const { path } = message.payload as { path: string };
+      await chrome.storage.local.set({ deepseek_pp_auto_update_path: path });
+      return { ok: true };
+    }
+
+    case 'AUTO_UPDATE_VIA_GIT': {
+      const { path } = message.payload as { path: string };
+      if (!path?.trim()) return { ok: false, error: 'no_path' };
+
+      // Check that shell_exec tool is available
+      const descriptors = await getRuntimeToolDescriptors();
+      const hasShell = descriptors.some((d) => d.name === 'shell_exec' || d.invocationName === 'shell_exec');
+      if (!hasShell) return { ok: false, error: 'no_shell' };
+
+      const broadcast = (status: string) =>
+        chrome.runtime.sendMessage({ type: 'AUTO_UPDATE_PROGRESS', status }).catch(() => {});
+
+      try {
+        // Step 1: git pull
+        broadcast('pulling');
+        const pullResult = await executeRuntimeToolCall({
+          name: 'shell_exec',
+          payload: { command: `git -C "${path}" pull origin main`, timeout_ms: 60000 },
+          raw: '',
+        }, 'auto_update');
+        if (!pullResult.ok) {
+          broadcast('error');
+          return { ok: false, error: pullResult.error?.message ?? pullResult.summary };
+        }
+
+        // Step 2: npm run build:chrome
+        broadcast('building');
+        const buildResult = await executeRuntimeToolCall({
+          name: 'shell_exec',
+          payload: { command: `Set-Location "${path}"; npm run build:chrome`, timeout_ms: 180000 },
+          raw: '',
+        }, 'auto_update');
+        if (!buildResult.ok) {
+          broadcast('error');
+          return { ok: false, error: buildResult.error?.message ?? buildResult.summary };
+        }
+
+        // Step 3: reload extension
+        broadcast('reloading');
+        setTimeout(() => chrome.runtime.reload(), 800);
+        return { ok: true };
+      } catch (err) {
+        broadcast('error');
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
     case 'GET_DEEPSEEK_THEME':
       return getDeepSeekTheme();
 

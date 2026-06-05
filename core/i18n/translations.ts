@@ -373,6 +373,17 @@ export interface Translations {
   settingsUpdateNeverChecked: string;
   settingsUpdateDownload: string;
   settingsUpdateError: string;
+  settingsAutoUpdateSection: string;
+  settingsAutoUpdatePathLabel: string;
+  settingsAutoUpdatePathPlaceholder: string;
+  settingsAutoUpdatePathHint: string;
+  settingsAutoUpdateButton: string;
+  settingsAutoUpdatePulling: string;
+  settingsAutoUpdateBuilding: string;
+  settingsAutoUpdateReloading: string;
+  settingsAutoUpdateSuccess: string;
+  settingsAutoUpdateErrorShell: string;
+  settingsAutoUpdateNoShell: string;
 
   // About credits
   aboutFork: string;
@@ -771,6 +782,17 @@ const it: Translations = {
   settingsUpdateNeverChecked: 'Non ancora verificato',
   settingsUpdateDownload: 'Scarica v{version}',
   settingsUpdateError: 'Errore di rete',
+  settingsAutoUpdateSection: 'Aggiornamento automatico',
+  settingsAutoUpdatePathLabel: 'Percorso del repository locale',
+  settingsAutoUpdatePathPlaceholder: 'C:\\Users\\...\\deepseek-pp',
+  settingsAutoUpdatePathHint: 'Cartella dove hai clonato il repo. Richiede Shell MCP attivo.',
+  settingsAutoUpdateButton: '⚡ Aggiorna automaticamente',
+  settingsAutoUpdatePulling: 'git pull in corso…',
+  settingsAutoUpdateBuilding: 'Build in corso…',
+  settingsAutoUpdateReloading: 'Ricarico l\'estensione…',
+  settingsAutoUpdateSuccess: '✓ Aggiornato! Ricarico…',
+  settingsAutoUpdateErrorShell: 'Errore Shell MCP — controlla che sia attivo e configurato',
+  settingsAutoUpdateNoShell: 'Shell MCP non disponibile. Installa e configura Shell nella pagina MCP.',
 
   // About credits
   aboutFork: 'Fork di',
@@ -1169,6 +1191,17 @@ const en: Translations = {
   settingsUpdateNeverChecked: 'Never checked',
   settingsUpdateDownload: 'Download v{version}',
   settingsUpdateError: 'Network error',
+  settingsAutoUpdateSection: 'Auto-update',
+  settingsAutoUpdatePathLabel: 'Local repository path',
+  settingsAutoUpdatePathPlaceholder: 'C:\\Users\\...\\deepseek-pp',
+  settingsAutoUpdatePathHint: 'Folder where you cloned the repo. Requires Shell MCP active.',
+  settingsAutoUpdateButton: '⚡ Update automatically',
+  settingsAutoUpdatePulling: 'Running git pull…',
+  settingsAutoUpdateBuilding: 'Building…',
+  settingsAutoUpdateReloading: 'Reloading extension…',
+  settingsAutoUpdateSuccess: '✓ Updated! Reloading…',
+  settingsAutoUpdateErrorShell: 'Shell MCP error — check it is active and configured',
+  settingsAutoUpdateNoShell: 'Shell MCP not available. Install and configure Shell in the MCP page.',
 
   // About credits
   aboutFork: 'Fork of',

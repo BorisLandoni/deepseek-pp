@@ -6,6 +6,16 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.9] - 2026-06-05
+
+### Fixed
+- **web_fetch / web_search still blocked by CORS after granting access**: in Manifest V3, host permissions granted at runtime are not reliably applied to the already-running service worker's `fetch()`, leaving requests blocked by CORS. Broad host access (`http://*/*`, `https://*/*`) is now declared directly in the manifest. For unpacked (locally-loaded) extensions Chrome grants this automatically at load time, so web_fetch works immediately after reload — no button, no service-worker-restart timing issue.
+
+### Changed
+- The "Web access" settings section is now a status indicator (the permission is granted via the manifest) instead of a grant/revoke button.
+
+---
+
 ## [0.7.8] - 2026-06-05
 
 ### Fixed

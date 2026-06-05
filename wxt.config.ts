@@ -31,8 +31,18 @@ function createManifest(env: ConfigEnv): UserManifest {
     description: 'Agentic memory, skills, agentic execution, automation, and MCP tools for DeepSeek',
     version: extensionVersion,
     permissions: isChromiumTarget ? [...permissions, 'sidePanel'] : permissions,
-    optional_host_permissions: ['http://*/*', 'https://*/*'],
-    host_permissions: ['*://chat.deepseek.com/*', '*://cn.bing.com/*', '*://www.bing.com/*'],
+    // Broad host access is declared directly (not optional) so that, for an unpacked
+    // extension, Chrome grants it automatically at load time. This makes web_fetch /
+    // web_search work reliably without the runtime-grant + service-worker-restart dance,
+    // which often leaves fetches blocked by CORS. The specific hosts are still listed for
+    // documentation; the broad patterns supersede them.
+    host_permissions: [
+      '*://chat.deepseek.com/*',
+      '*://cn.bing.com/*',
+      '*://www.bing.com/*',
+      'http://*/*',
+      'https://*/*',
+    ],
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },

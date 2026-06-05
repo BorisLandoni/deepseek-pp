@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.6.2] - 2026-06-05
+
+### Fixed
+- `TypeError: Cannot read properties of undefined (reading 'local')` on chat.deepseek.com — `chrome.storage` is not available in the main-world content script context; added guards to `getChatEnabled()`, `setChatEnabled()` and `saveClientHeadersToStorage()` to silently skip when called from the main world
+
+---
+
 ## [0.6.1] - 2026-06-05
 
 ### Added

@@ -180,13 +180,14 @@ export function rememberDeepSeekClientHeaders(headersInit: HeadersInit | undefin
 const STORAGE_HEADERS_KEY = 'deepseekCachedClientHeaders';
 
 export async function saveClientHeadersToStorage(): Promise<void> {
-  const chatEnabled = await getChatEnabled();
-  if (!chatEnabled) return;
   if (!rememberedClientHeaders) return;
   try {
+    // getChatEnabled uses chrome.storage which is unavailable in main world — guard here too
+    const chatEnabled = await getChatEnabled();
+    if (!chatEnabled) return;
     await chrome.storage.local.set({ [STORAGE_HEADERS_KEY]: rememberedClientHeaders });
   } catch {
-    // content script might not have storage access; silently fail
+    // chrome.storage not available in main world context; silently ignore
   }
 }
 

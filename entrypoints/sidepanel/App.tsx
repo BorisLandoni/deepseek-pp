@@ -96,7 +96,7 @@ export default function App() {
         style={{ borderBottom: '1px solid var(--ds-border)' }}
       >
         <div className="flex items-center gap-2.5">
-          <img src="/logo.png" alt="DeepSeek++" className="w-7 h-7 rounded-lg object-cover" />
+          <img src="/logo.png" alt="DeepSeek++" className="w-7 h-7" />
           <h1 className="text-[15px] font-semibold" style={{ color: 'var(--ds-text)' }}>
             DeepSeek++
           </h1>

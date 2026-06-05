@@ -626,10 +626,7 @@ export default function SettingsPage() {
         <h2 className="text-[13px] font-medium" style={{ color: 'var(--ds-text)' }}>{t.settingsAbout}</h2>
         <div className="ds-surface-panel rounded-xl p-4 space-y-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[11px] font-bold"
-              style={{ background: 'linear-gradient(135deg, var(--ds-blue), var(--ds-logo-gradient-end))' }}>
-              D+
-            </div>
+            <img src="/logo.png" alt="DeepSeek++" className="w-8 h-8" />
             <div>
               <div className="text-sm font-medium" style={{ color: 'var(--ds-text)' }}>DeepSeek++ v{version}</div>
               <div className="text-[11px]" style={{ color: 'var(--ds-text-tertiary)' }}>{t.settingsAboutDesc}</div>

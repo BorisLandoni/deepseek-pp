@@ -6,6 +6,14 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.0] - 2026-06-05
+
+### Changed
+- **New icon**: replaced the horizontal DeepSeek text logo with the official DeepSeek circular icon (from Wikimedia Commons)
+- Icon applied consistently across: browser toolbar, sidepanel header, Settings About section, onboarding modal, all Chrome icon sizes (16, 32, 48, 96, 128 px)
+
+---
+
 ## [0.6.9] - 2026-06-05
 
 ### Added

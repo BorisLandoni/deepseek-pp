@@ -24,12 +24,7 @@ export default function OnboardingModal() {
         style={{ background: 'var(--ds-bg)', border: '1px solid var(--ds-border)' }}
       >
         <div className="flex flex-col items-center gap-2 text-center">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold"
-            style={{ background: 'linear-gradient(135deg, var(--ds-blue), var(--ds-logo-gradient-end))' }}
-          >
-            D+
-          </div>
+          <img src="/logo.png" alt="DeepSeek++" className="w-12 h-12" />
           <h1 className="text-base font-semibold" style={{ color: 'var(--ds-text)' }}>
             {t.onboardingTitle}
           </h1>

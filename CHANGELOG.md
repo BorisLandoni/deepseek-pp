@@ -6,6 +6,15 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.6.7] - 2026-06-05
+
+### Fixed
+- **Sidebar chat: conversation memory not maintained across messages** — two root causes:
+  1. `chatParentMessageId` was overwritten with `null` when the stream did not return a `responseMessageId`, breaking the DeepSeek conversation thread; it is now only updated when a valid ID is received
+  2. The full system prompt (memories, preset, skill instructions) was injected with every message, causing DeepSeek to treat each turn as a fresh context; system context is now only injected on the first turn of a session — subsequent turns send only the user message and tool schemas
+
+---
+
 ## [0.6.6] - 2026-06-05
 
 ### Fixed

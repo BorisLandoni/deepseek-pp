@@ -991,6 +991,9 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
   }
 
   try {
+    // Track whether this is the first turn in the session
+    const isFirstTurn = !chatSessionId || chatParentMessageId === null;
+
     if (!chatSessionId) {
       chatSessionId = await createChatSession(headers);
       chatParentMessageId = null;
@@ -1021,13 +1024,21 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
 
     const enabledDescriptors = toolDescriptors.filter((t) => t.execution.enabled);
 
-    // Merge skill instructions with active preset (skill takes precedence, preset appended)
-    const presetContent = skillInstructions
-      ? skillInstructions + (activePreset?.content ? `\n\n---\n\n${activePreset.content}` : '')
-      : activePreset?.content ?? null;
+    // On first turn: inject full system context (memories, preset/skill, tools).
+    // On subsequent turns: only inject tools so the model can still call them,
+    // but skip the system preamble to avoid confusing the conversation context.
+    const presetContent = isFirstTurn
+      ? (skillInstructions
+          ? skillInstructions + (activePreset?.content ? `\n\n---\n\n${activePreset.content}` : '')
+          : activePreset?.content ?? null)
+      : null;
+
+    const injectMemories = isFirstTurn && (skillMemoryEnabled || !skillInvocation)
+      ? memories
+      : [];
 
     const { augmented } = buildPromptAugmentation(effectivePrompt, {
-      memories: skillMemoryEnabled ? memories : [],
+      memories: injectMemories,
       presetContent,
       toolDescriptors: enabledDescriptors,
       thinkingEnabled: false,
@@ -1085,7 +1096,11 @@ async function runSidepanelToolLoop(
       },
     });
 
-    chatParentMessageId = turn.responseMessageId;
+    // Only update the parent ID if the stream returned a valid response ID.
+    // Never overwrite with null — that would break conversation threading.
+    if (turn.responseMessageId !== null) {
+      chatParentMessageId = turn.responseMessageId;
+    }
     const fullText = accumulated || turn.assistantText;
 
     if (!fullText) {

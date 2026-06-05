@@ -39,6 +39,7 @@ import { getDeepSeekTheme, saveDeepSeekTheme } from '../core/theme/store';
 import { getBackgroundConfig, saveBackgroundConfig, clearBackgroundConfig } from '../core/background/store';
 import { getPetConfig, savePetConfig, clearPetConfig } from '../core/pet/store';
 import { getExtensionVersion } from '../core/version';
+import { parseSkillCommand } from '../core/skill/parser';
 import { maybeCheckForUpdate, getStoredUpdateInfo } from '../core/update/checker';
 import { getSyncConfig, saveSyncConfig } from '../core/sync/config';
 import { webdavTest, webdavMkcol, webdavGet, webdavPut } from '../core/sync/webdav-client';
@@ -988,6 +989,23 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
       chatParentMessageId = null;
     }
 
+    // Detect skill trigger (/skillname args)
+    const skillInvocation = parseSkillCommand(prompt);
+    let effectivePrompt = prompt;
+    let skillInstructions: string | null = null;
+    let skillMemoryEnabled = false;
+
+    if (skillInvocation) {
+      const skills = await getSkillLibrary();
+      const skill = skills.find((s) => s.name === skillInvocation.skillName && s.enabled !== false);
+      if (skill) {
+        skillInstructions = skill.instructions;
+        skillMemoryEnabled = skill.memoryEnabled ?? false;
+        // Use the arguments as the actual prompt; fall back to skill name if no args
+        effectivePrompt = skillInvocation.args.trim() || skillInvocation.skillName;
+      }
+    }
+
     const [memories, activePreset, toolDescriptors] = await Promise.all([
       getAllMemories(),
       getActivePreset(),
@@ -996,9 +1014,14 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
 
     const enabledDescriptors = toolDescriptors.filter((t) => t.execution.enabled);
 
-    const { augmented } = buildPromptAugmentation(prompt, {
-      memories,
-      presetContent: activePreset?.content ?? null,
+    // Merge skill instructions with active preset (skill takes precedence, preset appended)
+    const presetContent = skillInstructions
+      ? skillInstructions + (activePreset?.content ? `\n\n---\n\n${activePreset.content}` : '')
+      : activePreset?.content ?? null;
+
+    const { augmented } = buildPromptAugmentation(effectivePrompt, {
+      memories: skillMemoryEnabled ? memories : [],
+      presetContent,
       toolDescriptors: enabledDescriptors,
       thinkingEnabled: false,
     });

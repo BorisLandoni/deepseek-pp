@@ -6,6 +6,18 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.6.3] - 2026-06-05
+
+### Added
+- **Skills in sidebar chat**: type `/skillname args` in the sidebar chat to activate a skill
+- Skill autocomplete dropdown appears when typing `/` — ↑↓ to navigate, Tab/Enter to select, Esc to cancel
+- Active skill badge shows below the chat input with skill name and description
+- Warning shown if `/unknown-skill` is typed but not found
+- Memory injection respected: skills with `memoryEnabled: true` also inject relevant memories
+- Skill instructions stack with the active preset (skill takes precedence)
+
+---
+
 ## [0.6.2] - 2026-06-05
 
 ### Fixed

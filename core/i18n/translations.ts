@@ -375,6 +375,9 @@ export interface Translations {
   chatSending: string;
   chatLoginRequired: string;
   chatLoginNote: string;
+  chatSkillActive: string;
+  chatSkillNotFound: string;
+  chatSkillHint: string;
 
   // Onboarding
   onboardingTitle: string;
@@ -758,6 +761,9 @@ const it: Translations = {
   chatSending: '...',
   chatLoginRequired: 'Accedi prima a chat.deepseek.com e invia un messaggio',
   chatLoginNote: 'Il plugin deve catturare le tue credenziali per la conversazione diretta',
+  chatSkillActive: 'Skill attiva: /{name}',
+  chatSkillNotFound: 'Skill /{name} non trovata',
+  chatSkillHint: 'Digita / per usare una Skill',
 
   // Onboarding
   onboardingTitle: 'Benvenuto in DeepSeek++',
@@ -1141,6 +1147,9 @@ const en: Translations = {
   chatSending: '...',
   chatLoginRequired: 'Please log in to chat.deepseek.com and send a message first',
   chatLoginNote: 'The extension needs to capture your credentials for direct conversation',
+  chatSkillActive: 'Active skill: /{name}',
+  chatSkillNotFound: 'Skill /{name} not found',
+  chatSkillHint: 'Type / to use a Skill',
 
   // Onboarding
   onboardingTitle: 'Welcome to DeepSeek++',

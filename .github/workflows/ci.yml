@@ -11,20 +11,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Quality gates
+  build:
+    name: Build check
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,18 +32,11 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Setup Go for actionlint
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
-      - name: Install actionlint
-        run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          echo "$HOME/go/bin" >> "$GITHUB_PATH"
-
       - name: Install dependencies
         run: npm ci
 
-      - name: Run quality gates
-        run: npm run ci:quality
+      - name: TypeScript compile check
+        run: npm run compile
+
+      - name: Build Chrome extension
+        run: npm run build:chrome

@@ -6,6 +6,16 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.6.5] - 2026-06-05
+
+### Added
+- **Orange badge dot** on the Settings tab icon (⚙) when an update is available — always visible, not dismissible
+
+### Changed
+- Update check on sidepanel open now **bypasses the 1-hour cache** (calls GitHub API directly every time) so the notification appears immediately when a new version is published
+
+---
+
 ## [0.6.4] - 2026-06-05
 
 ### Added

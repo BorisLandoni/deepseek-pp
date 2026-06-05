@@ -49,21 +49,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (chatEnabled === false && tab === 'chat') {
-      setTab('memory');
-    }
+    if (chatEnabled === false && tab === 'chat') setTab('memory');
   }, [chatEnabled, tab]);
 
-  // Check for available updates on open
+  // Force update check every time the sidepanel opens (bypasses 1-hour cache)
   useEffect(() => {
-    chrome.runtime.sendMessage({ type: 'CHECK_FOR_UPDATE' })
+    chrome.runtime.sendMessage({ type: 'FORCE_CHECK_FOR_UPDATE' })
       .then((info: UpdateInfo | null) => {
         if (info?.available) setUpdateInfo(info);
       })
       .catch(() => {});
   }, []);
 
-  // On mount, read pending text from storage (handles sidepanel opening after message was lost)
+  // On mount, read pending text from storage
   useEffect(() => {
     chrome.storage.local.get('pendingChatText').then((data) => {
       const text = data.pendingChatText as string | undefined;
@@ -87,6 +85,8 @@ export default function App() {
     return () => chrome.runtime.onMessage.removeListener(handler);
   }, []);
 
+  const hasUpdate = Boolean(updateInfo?.available);
+
   return (
     <div className="flex flex-col h-screen" style={{ background: 'var(--ds-bg)' }}>
       {isFirstRun && <OnboardingModal />}
@@ -96,26 +96,26 @@ export default function App() {
         style={{ borderBottom: '1px solid var(--ds-border)' }}
       >
         <div className="flex items-center gap-2.5">
-          <img
-            src="/logo.png"
-            alt="DeepSeek++"
-            className="w-7 h-7 rounded-lg object-cover"
-          />
+          <img src="/logo.png" alt="DeepSeek++" className="w-7 h-7 rounded-lg object-cover" />
           <h1 className="text-[15px] font-semibold" style={{ color: 'var(--ds-text)' }}>
             DeepSeek++
           </h1>
         </div>
-        <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ color: 'var(--ds-text-tertiary)', background: 'var(--ds-surface)' }}>
+        <span
+          className="text-[11px] px-2 py-0.5 rounded-full"
+          style={{ color: 'var(--ds-text-tertiary)', background: 'var(--ds-surface)' }}
+        >
           v{version}
         </span>
       </header>
 
-      {updateInfo && !updateDismissed && (
-        <UpdateBanner update={updateInfo} onDismiss={() => setUpdateDismissed(true)} />
+      {/* Yellow banner — shown until dismissed */}
+      {hasUpdate && !updateDismissed && (
+        <UpdateBanner update={updateInfo!} onDismiss={() => setUpdateDismissed(true)} />
       )}
 
       <nav className="side-tabs" aria-label={t.navAriaLabel}>
-        {TABS.filter(t => chatEnabled !== false || t.key !== 'chat').map((item) => (
+        {TABS.filter(item => chatEnabled !== false || item.key !== 'chat').map((item) => (
           <button
             key={item.key}
             type="button"
@@ -124,16 +124,29 @@ export default function App() {
             aria-current={tab === item.key ? 'page' : undefined}
             title={item.label}
           >
-            <svg
-              className="side-tab-icon"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
-            </svg>
+            {/* Icon wrapper — relative so we can position the badge dot */}
+            <span className="relative inline-flex items-center justify-center">
+              <svg
+                className="side-tab-icon"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+              </svg>
+
+              {/* Orange badge dot on the Settings icon when update is available */}
+              {item.key === 'settings' && hasUpdate && (
+                <span
+                  className="absolute -top-1 -right-1 w-2 h-2 rounded-full border border-[var(--ds-bg)]"
+                  style={{ background: 'var(--ds-warning, #f59e0b)' }}
+                  aria-label="Update available"
+                />
+              )}
+            </span>
+
             <span className="side-tab-label">{item.label}</span>
             {tab === item.key && <span className="side-tab-indicator" />}
           </button>

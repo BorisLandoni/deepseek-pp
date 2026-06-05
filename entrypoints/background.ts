@@ -97,6 +97,35 @@ import type { AutomationCreateInput, AutomationRunnerRequest, AutomationRunnerRe
 const DEEPSEEK_HOME_URL = 'https://chat.deepseek.com/';
 let chatSessionId: string | null = null;
 let chatParentMessageId: number | null = null;
+
+// Storage keys for persisting chat session across service worker restarts.
+// Chrome MV3 service workers are killed after ~30s of inactivity; without this,
+// every message after a pause starts a fresh DeepSeek session, losing conversation context.
+const CHAT_SESSION_STORAGE_KEY = 'deepseek_pp_chat_session_id';
+const CHAT_PARENT_STORAGE_KEY = 'deepseek_pp_chat_parent_id';
+
+/** Restore chatSessionId / chatParentMessageId from storage after a SW restart. */
+async function restoreChatStateFromStorage(): Promise<void> {
+  if (chatSessionId !== null) return; // Already in memory — nothing to restore
+  try {
+    const data = await chrome.storage.local.get([CHAT_SESSION_STORAGE_KEY, CHAT_PARENT_STORAGE_KEY]);
+    const sid = data[CHAT_SESSION_STORAGE_KEY];
+    const pid = data[CHAT_PARENT_STORAGE_KEY];
+    if (typeof sid === 'string' && sid) chatSessionId = sid;
+    if (typeof pid === 'number' && pid >= 0) chatParentMessageId = pid;
+  } catch {}
+}
+
+/** Persist current session state so it survives a service worker restart. */
+function persistChatState(): void {
+  if (chatSessionId) {
+    const toSave: Record<string, unknown> = { [CHAT_SESSION_STORAGE_KEY]: chatSessionId };
+    if (chatParentMessageId !== null) toSave[CHAT_PARENT_STORAGE_KEY] = chatParentMessageId;
+    chrome.storage.local.set(toSave).catch(() => {});
+  } else {
+    chrome.storage.local.remove([CHAT_SESSION_STORAGE_KEY, CHAT_PARENT_STORAGE_KEY]).catch(() => {});
+  }
+}
 type SidePanelApi = {
   setPanelBehavior?: (options: { openPanelOnActionClick: boolean }) => Promise<void>;
 };
@@ -770,6 +799,7 @@ async function handleMessage(
     case 'CHAT_NEW_SESSION':
       chatSessionId = null;
       chatParentMessageId = null;
+      chrome.storage.local.remove([CHAT_SESSION_STORAGE_KEY, CHAT_PARENT_STORAGE_KEY]).catch(() => {});
       return { ok: true };
 
     case 'GET_AUTH_STATUS': {
@@ -1071,12 +1101,18 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
   }
 
   try {
+    // Restore session/threading state that may have been lost when the service worker was restarted.
+    // Chrome MV3 kills service workers after ~30s of inactivity; this ensures conversation context
+    // is maintained across those restarts.
+    await restoreChatStateFromStorage();
+
     // Track whether this is the first turn in the session
     const isFirstTurn = !chatSessionId || chatParentMessageId === null;
 
     if (!chatSessionId) {
       chatSessionId = await createChatSession(headers);
       chatParentMessageId = null;
+      persistChatState(); // Persist new session ID immediately
     }
 
     // Detect skill trigger (/skillname args)
@@ -1142,8 +1178,10 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     broadcastChatChunk({ text: '', done: true, error: msg }, excludeTabId);
-    if (msg.includes('auth') || msg.includes('token') || msg.includes('401')) {
+    if (msg.includes('auth') || msg.includes('token') || msg.includes('401') || msg.includes('session')) {
       chatSessionId = null;
+      chatParentMessageId = null;
+      persistChatState(); // Clear persisted state on auth/session errors
     }
   }
 }
@@ -1180,6 +1218,7 @@ async function runSidepanelToolLoop(
     // Never overwrite with null — that would break conversation threading.
     if (turn.responseMessageId !== null) {
       chatParentMessageId = turn.responseMessageId;
+      persistChatState(); // Persist after each successful turn so SW restarts don't lose context
     }
     const fullText = accumulated || turn.assistantText;
 

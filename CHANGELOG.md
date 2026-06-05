@@ -6,6 +6,30 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.3] - 2026-06-05
+
+### Fixed
+- **Conversation memory lost between messages**: Chrome MV3 service workers are killed after ~30 seconds of inactivity and restart with cleared state. `chatSessionId` and `chatParentMessageId` are now persisted to `chrome.storage.local` and restored on every message, so conversation context survives service worker restarts
+- Session state is saved immediately after creating a new session and after each successful response turn
+- Session state is cleared from storage on auth/session errors and when starting a new session manually
+
+---
+
+## [0.7.2] - 2026-06-05
+
+### Changed
+- Improved login screen in sidebar chat: 3-step guide, "Open DeepSeek" button, spinner while waiting for credentials, retry button
+
+---
+
+## [0.7.1] - 2026-06-05
+
+### Fixed
+- Auto-update now copies built files to the Chrome load folder if different from `dist\chrome-mv3`
+- Added "Chrome load folder" setting to configure where Chrome loads the unpacked extension from
+
+---
+
 ## [0.7.0] - 2026-06-05
 
 ### Changed

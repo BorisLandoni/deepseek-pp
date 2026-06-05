@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.4] - 2026-06-05
+
+### Fixed
+- **First characters of AI responses were dropped**: background now broadcasts the full accumulated text on each streaming chunk (instead of only the delta), and the frontend replaces the last message instead of appending — eliminates any race condition or accumulation bug that could cause the beginning of a response to be silently lost
+
+---
+
 ## [0.7.3] - 2026-06-05
 
 ### Fixed

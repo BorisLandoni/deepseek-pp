@@ -63,8 +63,7 @@ export default function ChatPage() {
         }
         if (msg.done) {
           setIsStreaming(false);
-          // Sync final text: background sends the authoritative complete text with done=true.
-          // This ensures any characters dropped during streaming are restored.
+          // Final authoritative full text — replace the last assistant message.
           if (msg.text) {
             setMessages((prev) => {
               const last = prev[prev.length - 1];
@@ -76,10 +75,12 @@ export default function ChatPage() {
           }
           return;
         }
+        // Background now sends full accumulated text (not a delta), so we always
+        // replace — not append — to avoid any character-dropping accumulation bugs.
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'assistant') {
-            return [...prev.slice(0, -1), { role: 'assistant', text: last.text + (msg.text ?? '') }];
+            return [...prev.slice(0, -1), { role: 'assistant', text: msg.text ?? '' }];
           }
           return [...prev, { role: 'assistant', text: msg.text ?? '' }];
         });

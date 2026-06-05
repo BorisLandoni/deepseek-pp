@@ -1208,9 +1208,12 @@ async function runSidepanelToolLoop(
   for (let step = 0; step < MAX_STEPS; step++) {
     let accumulated = '';
     const turn = await submitPromptStreaming(currentInput, {
-      onTextChunk(newText: string, fullText: string) {
+      onTextChunk(_newText: string, fullText: string) {
         accumulated = fullText;
-        broadcastChatChunk({ text: newText, done: false }, excludeTabId);
+        // Broadcast the full accumulated text (not just the delta) so the frontend
+        // can simply replace the last message on each chunk — immune to any ordering
+        // or accumulation issues that could cause dropped first characters.
+        broadcastChatChunk({ text: fullText, done: false }, excludeTabId);
       },
     });
 

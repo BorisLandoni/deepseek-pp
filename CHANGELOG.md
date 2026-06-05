@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.5] - 2026-06-05
+
+### Fixed
+- **First character(s) of streaming responses dropped**: `extractResponseTextFromParsed` now accepts any SSE patch operation (APPEND, SET, etc.) on response text paths, not just APPEND — DeepSeek uses SET to initialise the first character before switching to APPEND for subsequent deltas. Also added handling for `response/fragments/N` (specific fragment index) patches with object values.
+
+---
+
 ## [0.7.4] - 2026-06-05
 
 ### Fixed

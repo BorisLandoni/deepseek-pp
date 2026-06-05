@@ -73,19 +73,15 @@ export function extractTextFromParsed(parsed: any): string | null {
       .join('');
     return text.length > 0 ? text : null;
   }
-  // Format 1: {"v":"text"} — shorthand text append (no path)
+  // Format 1: no path, string value — shorthand text chunk
   if (!parsed.p && typeof parsed.v === 'string') {
     return parsed.v;
   }
-  // Format 2: {"p":"...", "o":"APPEND", "v":"text"} — explicit append
-  if (parsed.p && parsed.o === 'APPEND' && typeof parsed.v === 'string') {
+  // Format 2: any path + any operation + string value — permissive to catch SET/APPEND/etc.
+  if (parsed.p && typeof parsed.v === 'string') {
     return parsed.v;
   }
-  // Format 3: {"p":"response/fragments/-1/content", "v":"text"} — text/content patch (no "o" field)
-  if (isTextPatchPath(parsed.p) && typeof parsed.v === 'string' && !parsed.o) {
-    return parsed.v;
-  }
-  // Format 4: {"p":"response/fragments", "o":"APPEND", "v":[{content:"text",...}]} — new fragment with initial content
+  // Format 3: fragments APPEND — array of fragment objects with initial content
   if (isFragmentsAppendPatch(parsed)) {
     const text = parsed.v
       .map((frag: unknown) => extractFragmentText(frag))
@@ -104,21 +100,27 @@ export function extractResponseTextFromParsed(parsed: any): string | null {
       .join('');
     return text.length > 0 ? text : null;
   }
+  // Format 1: no path, string value — shorthand text chunk
   if (!parsed.p && typeof parsed.v === 'string') {
     return parsed.v;
   }
-  if (isResponseTextPatchPath(parsed.p) && parsed.o === 'APPEND' && typeof parsed.v === 'string') {
+  // Format 2: any operation (APPEND, SET, etc.) on a response text path with a string value.
+  // DeepSeek may use SET to initialise the first character and APPEND for subsequent ones.
+  // Being permissive about the operation is safe: text paths only ever receive text values.
+  if (isResponseTextPatchPath(parsed.p) && typeof parsed.v === 'string') {
     return parsed.v;
   }
-  if (isResponseTextPatchPath(parsed.p) && typeof parsed.v === 'string' && !parsed.o) {
-    return parsed.v;
-  }
+  // Format 3: response/fragments APPEND — array of new fragment objects with initial content
   if (isResponseFragmentsAppendPatch(parsed)) {
     const text = parsed.v
       .map((frag: unknown) => extractFragmentText(frag))
       .filter((part: string | null): part is string => part !== null)
       .join('');
     return text.length > 0 ? text : null;
+  }
+  // Format 4: response/fragments/N — patch to a specific fragment object (e.g. initial content)
+  if (isResponseFragmentObjectPatch(parsed)) {
+    return extractFragmentText(parsed.v);
   }
   return null;
 }
@@ -132,6 +134,13 @@ function isFragmentsAppendPatch(parsed: any): boolean {
 
 function isResponseFragmentsAppendPatch(parsed: any): boolean {
   return parsed?.p === 'response/fragments' && parsed.o === 'APPEND' && Array.isArray(parsed.v);
+}
+
+/** Matches response/fragments/0, response/fragments/-1, etc. where v is a fragment object. */
+function isResponseFragmentObjectPatch(parsed: any): boolean {
+  if (typeof parsed?.p !== 'string') return false;
+  if (!/^response\/fragments\/[-\d]+$/.test(parsed.p)) return false;
+  return typeof parsed.v === 'object' && parsed.v !== null && !Array.isArray(parsed.v);
 }
 
 function extractFragmentText(fragment: unknown): string | null {

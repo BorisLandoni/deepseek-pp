@@ -785,6 +785,27 @@ async function handleMessage(
       return { ok: true, lastSyncAt: now, counts: getSyncCounts(snapshot) };
     }
 
+    case 'EXPORT_LOCAL_BACKUP': {
+      // Full local backup: memories + custom skills + GitHub skill sources + presets.
+      const snapshot = await getLocalSyncDataSnapshot();
+      return { ok: true, snapshot, counts: getSyncCounts(snapshot) };
+    }
+
+    case 'IMPORT_LOCAL_BACKUP': {
+      const snapshot = message.payload as SyncDataSnapshot;
+      if (!snapshot || !Array.isArray(snapshot.memories) || !Array.isArray(snapshot.skills)) {
+        return { ok: false, error: 'invalid_backup' };
+      }
+      await Promise.all([
+        replaceAllMemories(snapshot.memories ?? []),
+        replaceAllCustomSkills(snapshot.skills ?? []),
+        replaceAllSkillSources(snapshot.skillSources ?? []),
+        replaceAllPresets(snapshot.presets ?? []),
+      ]);
+      await broadcastStateUpdate(sender.tab?.id);
+      return { ok: true, counts: getSyncCounts(snapshot) };
+    }
+
     case 'CHAT_SUBMIT_PROMPT': {
       const { text } = message.payload as { text: string };
       if (!(await getChatEnabled())) {

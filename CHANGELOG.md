@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.16] - 2026-06-06
+
+### Added
+- **Full backup export/import**: Settings → Data now has "Export backup" / "Import backup" buttons that save and restore all memories, custom skills and presets in a single JSON file. This protects custom skills (stored in chrome.storage.local) from being lost when the extension is removed and reinstalled.
+
+---
+
 ## [0.7.15] - 2026-06-06
 
 ### Added

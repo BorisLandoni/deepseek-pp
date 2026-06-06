@@ -341,6 +341,58 @@ export default function SettingsPage() {
     input.click();
   };
 
+  const handleExportBackup = async () => {
+    const resp = await chrome.runtime.sendMessage({ type: 'EXPORT_LOCAL_BACKUP' });
+    if (!resp?.ok || !resp.snapshot) {
+      alert(language === 'it' ? 'Esportazione backup non riuscita.' : 'Backup export failed.');
+      return;
+    }
+    const payload = {
+      _type: 'deepseek-pp-backup',
+      _version: version,
+      exportedAt: new Date().toISOString(),
+      data: resp.snapshot,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `deepseek-pp-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      let parsed: { _type?: string; data?: unknown } ;
+      try {
+        parsed = JSON.parse(await file.text());
+      } catch {
+        alert(t.settingsJsonError);
+        return;
+      }
+      const snapshot = parsed?._type === 'deepseek-pp-backup' ? parsed.data : parsed;
+      if (!confirm(language === 'it'
+        ? 'Importare il backup? Sostituirà memorie, skill personalizzate e preset attuali.'
+        : 'Import backup? This will replace current memories, custom skills and presets.')) return;
+      const resp = await chrome.runtime.sendMessage({ type: 'IMPORT_LOCAL_BACKUP', payload: snapshot });
+      if (resp?.ok) {
+        setMemoryCount(resp.counts?.memories ?? 0);
+        alert(language === 'it'
+          ? `Backup importato: ${resp.counts?.memories ?? 0} memorie, ${resp.counts?.skills ?? 0} skill, ${resp.counts?.presets ?? 0} preset.`
+          : `Backup imported: ${resp.counts?.memories ?? 0} memories, ${resp.counts?.skills ?? 0} skills, ${resp.counts?.presets ?? 0} presets.`);
+      } else {
+        alert(language === 'it' ? 'Importazione non riuscita.' : 'Import failed.');
+      }
+    };
+    input.click();
+  };
+
   const handleClearAll = async () => {
     if (!confirm(t.settingsClearConfirm)) return;
     const memories: Memory[] = await chrome.runtime.sendMessage({ type: 'GET_MEMORIES' });
@@ -619,6 +671,30 @@ export default function SettingsPage() {
             {t.settingsImportMemory}
           </button>
         </div>
+        {/* Full backup (memories + skills + presets) */}
+        <div className="ds-surface-panel rounded-xl p-3 space-y-2">
+          <div className="text-[11px] font-medium" style={{ color: 'var(--ds-text)' }}>
+            {language === 'it' ? 'Backup completo' : 'Full backup'}
+          </div>
+          <p className="text-[10px]" style={{ color: 'var(--ds-text-tertiary)' }}>
+            {language === 'it'
+              ? 'Salva o ripristina memorie, skill personalizzate e preset in un unico file. Utile prima di rimuovere l’estensione.'
+              : 'Save or restore memories, custom skills and presets in one file. Useful before removing the extension.'}
+          </p>
+          <div className="flex gap-2">
+            <button onClick={handleExportBackup}
+              className="ds-btn-secondary flex-1 py-2 text-[11px] font-medium rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d={SVG_PATHS.download} /></svg>
+              {language === 'it' ? 'Esporta backup' : 'Export backup'}
+            </button>
+            <button onClick={handleImportBackup}
+              className="ds-btn-secondary flex-1 py-2 text-[11px] font-medium rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d={SVG_PATHS.upload} /></svg>
+              {language === 'it' ? 'Importa backup' : 'Import backup'}
+            </button>
+          </div>
+        </div>
+
         <button onClick={handleClearAll} className="ds-btn-danger w-full py-2.5 text-xs font-medium rounded-lg transition-all duration-150">
           {t.settingsClearAll}
         </button>

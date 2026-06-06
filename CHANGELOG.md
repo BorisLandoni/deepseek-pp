@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.14] - 2026-06-05
+
+### Added
+- **Visible warning banner when a page can't be fetched**: when an auto-fetched URL is blocked by bot protection or fails, the sidebar chat now shows an inline warning banner (e.g. "⚠️ excelitas.com è protetto da anti-bot… incolla il testo della pagina") above the response, so it's immediately clear the page wasn't read.
+
+---
+
 ## [0.7.13] - 2026-06-05
 
 ### Fixed

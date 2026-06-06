@@ -4,9 +4,12 @@ import type { ChatMessage as ChatMessageType, Skill } from '../../../core/types'
 import ChatMessage from '../components/ChatMessage';
 import { consumePendingText, onPendingText } from '../pending-text';
 
+type NoticeMessage = { role: 'notice'; text: string };
+type DisplayMessage = ChatMessageType | NoticeMessage;
+
 export default function ChatPage() {
   const { t } = useLanguage();
-  const [messages, setMessages] = useState<ChatMessageType[]>([]);
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasToken, setHasToken] = useState<boolean | null>(null);
@@ -47,6 +50,18 @@ export default function ChatPage() {
       if (msg.type === 'AUTH_STATUS_CHANGED') {
         setHasToken(msg.hasToken ?? false);
         if (msg.hasToken) setWaitingForToken(false);
+        return;
+      }
+      if (msg.type === 'CHAT_NOTICE' && typeof msg.text === 'string') {
+        // Insert a notice banner before any in-progress assistant message.
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          const notice: NoticeMessage = { role: 'notice', text: msg.text! };
+          if (last?.role === 'assistant') {
+            return [...prev.slice(0, -1), notice, last];
+          }
+          return [...prev, notice];
+        });
         return;
       }
       if (msg.type === 'CHAT_STREAM_CHUNK') {
@@ -292,13 +307,27 @@ export default function ChatPage() {
             </div>
           </div>
         )}
-        {messages.map((msg, i) => (
-          <ChatMessage
-            key={i}
-            message={msg}
-            isStreaming={isStreaming && i === messages.length - 1 && msg.role === 'assistant'}
-          />
-        ))}
+        {messages.map((msg, i) =>
+          msg.role === 'notice' ? (
+            <div
+              key={i}
+              className="mb-3 mx-1 rounded-lg px-3 py-2 text-[11px] leading-relaxed flex items-start gap-1.5"
+              style={{
+                background: 'var(--ds-warning-bg, rgba(245,158,11,0.12))',
+                color: 'var(--ds-warning, #b45309)',
+                border: '1px solid var(--ds-warning, #f59e0b)',
+              }}
+            >
+              <span>{msg.text}</span>
+            </div>
+          ) : (
+            <ChatMessage
+              key={i}
+              message={msg}
+              isStreaming={isStreaming && i === messages.length - 1 && msg.role === 'assistant'}
+            />
+          )
+        )}
         {error && <div className="text-xs text-red-400 text-center mt-2">{error}</div>}
       </div>
 

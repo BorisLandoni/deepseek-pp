@@ -1119,6 +1119,7 @@ async function autoFetchPromptUrls(
 
   const blocks: string[] = [];
   for (const url of urls) {
+    const host = safeHostname(url);
     try {
       const result = await executeRuntimeToolCall(
         { name: 'web_fetch', payload: { url }, raw: '' },
@@ -1128,14 +1129,33 @@ async function autoFetchPromptUrls(
       if (result.ok && content) {
         blocks.push(`<pagina url="${url}">\n${content}\n</pagina>`);
       } else {
+        const blocked = result.error?.code === 'fetch_bot_challenge';
+        broadcastChatNotice(
+          blocked
+            ? `⚠️ ${host} è protetto da anti-bot (Cloudflare) e non può essere letto automaticamente. Copia e incolla il testo della pagina nella chat.`
+            : `⚠️ Impossibile leggere ${host}: ${result.error?.message ?? result.summary ?? 'errore'}. Prova a incollare il testo della pagina.`,
+          excludeTabId,
+        );
         blocks.push(`<pagina url="${url}" errore="true">Impossibile recuperare la pagina: ${result.error?.message ?? result.summary ?? 'errore sconosciuto'}</pagina>`);
       }
     } catch (err) {
+      broadcastChatNotice(`⚠️ Impossibile leggere ${host}: ${err instanceof Error ? err.message : String(err)}.`, excludeTabId);
       blocks.push(`<pagina url="${url}" errore="true">Impossibile recuperare la pagina: ${err instanceof Error ? err.message : String(err)}</pagina>`);
     }
   }
 
   return blocks.join('\n\n');
+}
+
+function safeHostname(url: string): string {
+  try { return new URL(url).hostname; } catch { return url; }
+}
+
+function broadcastChatNotice(text: string, excludeTabId?: number) {
+  chrome.runtime.sendMessage({ type: 'CHAT_NOTICE', text }).catch(() => {});
+  if (excludeTabId !== undefined) {
+    chrome.tabs.sendMessage(excludeTabId, { type: 'CHAT_NOTICE', text }).catch(() => {});
+  }
 }
 
 async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {

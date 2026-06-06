@@ -1101,23 +1101,33 @@ const URL_REGEX = /https?:\/\/[^\s<>"')]+/gi;
  * of depending on the model to (inconsistently) decide to call web_fetch itself.
  * Returns an empty string when there are no URLs or web_fetch is unavailable.
  */
+interface AutoFetchResult {
+  /** Injected context block with page content (and error placeholders). */
+  context: string;
+  /** Number of URLs found in the prompt. */
+  urlCount: number;
+  /** Number of URLs whose real content was successfully retrieved. */
+  successCount: number;
+}
+
 async function autoFetchPromptUrls(
   prompt: string,
   descriptors: ToolDescriptor[],
   excludeTabId?: number,
-): Promise<string> {
+): Promise<AutoFetchResult> {
   const hasWebFetch = descriptors.some((d) => (d.invocationName ?? d.name) === 'web_fetch');
-  if (!hasWebFetch) return '';
+  if (!hasWebFetch) return { context: '', urlCount: 0, successCount: 0 };
 
   const urls = Array.from(new Set(prompt.match(URL_REGEX) ?? []))
     .map((u) => u.replace(/[.,;]+$/, '')) // strip trailing punctuation
     .slice(0, 3);
-  if (urls.length === 0) return '';
+  if (urls.length === 0) return { context: '', urlCount: 0, successCount: 0 };
 
   // Show a transient status while fetching (replaced by the real answer once streaming starts)
   broadcastChatChunk({ text: `🔄 Recupero ${urls.length > 1 ? 'pagine' : 'pagina'}…`, done: false }, excludeTabId);
 
   const blocks: string[] = [];
+  let successCount = 0;
   for (const url of urls) {
     const host = safeHostname(url);
     try {
@@ -1127,6 +1137,7 @@ async function autoFetchPromptUrls(
       );
       const content = result.ok ? ((result.output as { content?: string } | undefined)?.content ?? '') : '';
       if (result.ok && content) {
+        successCount++;
         blocks.push(`<pagina url="${url}">\n${content}\n</pagina>`);
       } else {
         const blocked = result.error?.code === 'fetch_bot_challenge';
@@ -1144,7 +1155,7 @@ async function autoFetchPromptUrls(
     }
   }
 
-  return blocks.join('\n\n');
+  return { context: blocks.join('\n\n'), urlCount: urls.length, successCount };
 }
 
 function safeHostname(url: string): string {
@@ -1209,9 +1220,21 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
     // DeepSeek calls web_fetch unreliably (often skipping it and hallucinating while
     // claiming it fetched), so we pre-fetch URLs in the background and hand the model the
     // real page content. This guarantees grounded answers regardless of the model's choice.
-    const fetchedContext = await autoFetchPromptUrls(effectivePrompt, enabledDescriptors, excludeTabId);
-    const promptWithContext = fetchedContext
-      ? `${effectivePrompt}\n\n[CONTENUTO REALE DELLE PAGINE — usa ESCLUSIVAMENTE questi dati, non inventare]\n${fetchedContext}\n[/CONTENUTO REALE]`
+    const fetched = await autoFetchPromptUrls(effectivePrompt, enabledDescriptors, excludeTabId);
+
+    // Anti-hallucination guard: when a skill is active and we found URLs but couldn't read
+    // ANY of them, do NOT send the request to DeepSeek — it would fabricate content from
+    // memory while claiming it used the page. Stop here with a clear instruction instead.
+    if (skillInvocation && fetched.urlCount > 0 && fetched.successCount === 0) {
+      broadcastChatChunk({
+        text: `⚠️ Non sono riuscito a leggere la pagina richiesta, quindi non genero contenuti per evitare dati inventati.\n\n**Cosa fare:** apri la pagina nel browser, copia il testo della scheda/prodotto e incollalo qui (al posto dell'URL).`,
+        done: true,
+      }, excludeTabId);
+      return;
+    }
+
+    const promptWithContext = fetched.context
+      ? `${effectivePrompt}\n\n[CONTENUTO REALE DELLE PAGINE — usa ESCLUSIVAMENTE questi dati, non inventare]\n${fetched.context}\n[/CONTENUTO REALE]`
       : effectivePrompt;
 
     // On first turn: inject full system context (memories, preset/skill, tools).

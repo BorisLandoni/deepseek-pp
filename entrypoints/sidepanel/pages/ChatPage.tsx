@@ -8,8 +8,9 @@ type NoticeMessage = { role: 'notice'; text: string };
 type DisplayMessage = ChatMessageType | NoticeMessage;
 
 export default function ChatPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [copiedAll, setCopiedAll] = useState(false);
   const [inputText, setInputText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasToken, setHasToken] = useState<boolean | null>(null);
@@ -172,6 +173,28 @@ export default function ChatPage() {
     inputRef.current?.focus();
   };
 
+  const copyConversation = async () => {
+    const transcript = messages
+      .filter((m) => m.role !== 'notice')
+      .map((m) => `${m.role === 'user' ? '👤' : '🤖'} ${m.text}`)
+      .join('\n\n');
+    if (!transcript) return;
+    try {
+      await navigator.clipboard.writeText(transcript);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = transcript;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    }
+    setCopiedAll(true);
+    setTimeout(() => setCopiedAll(false), 1500);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (suggestions.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -285,14 +308,29 @@ export default function ChatPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: '1px solid var(--ds-border)' }}>
         <span className="text-sm font-medium" style={{ color: 'var(--ds-text)' }}>{t.chatTitle}</span>
-        <button
-          onClick={newSession}
-          className="text-xs px-2.5 py-1 rounded-md"
-          style={{ color: 'var(--ds-text-tertiary)', background: 'var(--ds-surface)' }}
-          title={t.chatNewSession}
-        >
-          {t.chatNewSession}
-        </button>
+        <div className="flex items-center gap-1.5">
+          {messages.some((m) => m.role !== 'notice') && (
+            <button
+              onClick={copyConversation}
+              className="text-xs px-2.5 py-1 rounded-md flex items-center gap-1"
+              style={{ color: copiedAll ? 'var(--ds-success, #16a34a)' : 'var(--ds-text-tertiary)', background: 'var(--ds-surface)' }}
+              title={language === 'it' ? 'Copia conversazione' : 'Copy conversation'}
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d={copiedAll ? 'M5 13l4 4L19 7' : 'M8 16h8M8 12h8m-7-8h6a2 2 0 012 2v12a2 2 0 01-2 2H9a2 2 0 01-2-2V6a2 2 0 012-2z'} />
+              </svg>
+              {copiedAll ? (language === 'it' ? 'Copiato' : 'Copied') : (language === 'it' ? 'Copia' : 'Copy')}
+            </button>
+          )}
+          <button
+            onClick={newSession}
+            className="text-xs px-2.5 py-1 rounded-md"
+            style={{ color: 'var(--ds-text-tertiary)', background: 'var(--ds-surface)' }}
+            title={t.chatNewSession}
+          >
+            {t.chatNewSession}
+          </button>
+        </div>
       </div>
 
       {/* Messages */}

@@ -6,6 +6,14 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.15] - 2026-06-06
+
+### Added
+- **Anti-hallucination guard**: when a skill is active and every URL in the message fails to fetch (bot protection, network error), the extension no longer sends the request to DeepSeek at all — it stops with a clear message asking the user to paste the page text. This prevents the model from fabricating content from memory while claiming it read the page.
+- **Copy entire conversation**: a "Copy" button in the chat header copies the full transcript (user + assistant turns, excluding warning banners) to the clipboard.
+
+---
+
 ## [0.7.14] - 2026-06-05
 
 ### Added

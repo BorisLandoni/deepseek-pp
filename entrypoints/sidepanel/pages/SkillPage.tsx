@@ -117,6 +117,82 @@ export default function SkillPage() {
     await load();
   };
 
+  const handleExportSkills = () => {
+    const customSkills = skills.filter((s) => s.source === 'custom');
+    if (customSkills.length === 0) {
+      alert(t.skillExportEmpty);
+      return;
+    }
+    const payload = {
+      _type: 'deepseek-pp-skills',
+      _version: chrome.runtime.getManifest().version,
+      exportedAt: new Date().toISOString(),
+      skills: customSkills.map((s) => ({
+        name: s.name,
+        description: s.description,
+        instructions: s.instructions,
+        memoryEnabled: s.memoryEnabled ?? false,
+        enabled: s.enabled !== false,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `deepseek-pp-skills-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportSkills = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await file.text());
+      } catch {
+        alert(t.skillImportInvalid);
+        return;
+      }
+      // Accept several shapes: array, {skills:[]}, full backup {data:{skills:[]}}, single skill object.
+      const p = parsed as Record<string, unknown> & { skills?: unknown; data?: { skills?: unknown } };
+      let list: unknown[] = [];
+      if (Array.isArray(parsed)) list = parsed;
+      else if (Array.isArray(p?.skills)) list = p.skills as unknown[];
+      else if (Array.isArray(p?.data?.skills)) list = p.data!.skills as unknown[];
+      else if (p?.name && p?.instructions) list = [parsed];
+
+      const valid = list.filter(
+        (s): s is { name: string; instructions: string; description?: string; memoryEnabled?: boolean; enabled?: boolean } =>
+          Boolean(s && typeof s === 'object' && (s as { name?: unknown }).name && (s as { instructions?: unknown }).instructions),
+      );
+      if (valid.length === 0) {
+        alert(t.skillImportNone);
+        return;
+      }
+      for (const s of valid) {
+        await chrome.runtime.sendMessage({
+          type: 'SAVE_SKILL',
+          payload: {
+            name: s.name,
+            description: s.description ?? '',
+            instructions: s.instructions,
+            source: 'custom',
+            memoryEnabled: s.memoryEnabled ?? false,
+            enabled: s.enabled !== false,
+          } as Skill,
+        });
+      }
+      await load();
+      alert(t.skillImportDone.replace('{n}', String(valid.length)));
+    };
+    input.click();
+  };
+
   const handleCheckSource = async (source: GitHubSkillSource) => {
     setSourceActions((current) => ({
       ...current,
@@ -209,6 +285,26 @@ export default function SkillPage() {
           {t.skillTitle}
         </h2>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleImportSkills}
+            title={t.skillImportFile}
+            aria-label={t.skillImportFile}
+            className="ds-btn-secondary px-2 py-1.5 rounded-lg transition-all duration-150 flex items-center"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          </button>
+          <button
+            onClick={handleExportSkills}
+            title={t.skillExportFile}
+            aria-label={t.skillExportFile}
+            className="ds-btn-secondary px-2 py-1.5 rounded-lg transition-all duration-150 flex items-center"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </button>
           <button
             onClick={handleImport}
             className="ds-btn-secondary px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 flex items-center gap-1"

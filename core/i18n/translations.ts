@@ -72,6 +72,12 @@ export interface Translations {
   skillBuiltin: string;
   skillOfficial: string;
   skillRemote: string;
+  skillImportFile: string;
+  skillExportFile: string;
+  skillExportEmpty: string;
+  skillImportInvalid: string;
+  skillImportNone: string;
+  skillImportDone: string;
   skillGitHubSource: string;
   skillGitHubImported: string;
   skillCheck: string;
@@ -487,6 +493,12 @@ const it: Translations = {
   skillBuiltin: 'Integrato',
   skillOfficial: 'Ufficiale',
   skillRemote: 'GitHub',
+  skillImportFile: 'Importa skill da file',
+  skillExportFile: 'Esporta skill in file',
+  skillExportEmpty: 'Nessuna skill personalizzata da esportare.',
+  skillImportInvalid: 'File JSON non valido.',
+  skillImportNone: 'Nessuna skill valida trovata nel file.',
+  skillImportDone: 'Importate {n} skill.',
   skillGitHubSource: 'Sorgenti GitHub',
   skillGitHubImported: '{n} Skill',
   skillCheck: 'Controlla',
@@ -902,6 +914,12 @@ const en: Translations = {
   skillBuiltin: 'Built-in',
   skillOfficial: 'Official',
   skillRemote: 'GitHub',
+  skillImportFile: 'Import skills from file',
+  skillExportFile: 'Export skills to file',
+  skillExportEmpty: 'No custom skills to export.',
+  skillImportInvalid: 'Invalid JSON file.',
+  skillImportNone: 'No valid skills found in the file.',
+  skillImportDone: 'Imported {n} skills.',
   skillGitHubSource: 'GitHub Sources',
   skillGitHubImported: '{n} Skills',
   skillCheck: 'Check',

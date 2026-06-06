@@ -6,6 +6,14 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.17] - 2026-06-06
+
+### Added
+- **Import/Export skills from file**: the Skill page now has Import and Export buttons. Export saves all custom skills to a JSON file; Import loads skills from a JSON file (accepts single skill, array, `{skills:[]}`, or a full backup). Lets you move skills between installs and keep them version-controlled.
+- **Ready-to-import skill pack**: `skills-export/futura-skills.json` contains the Futura Group editorial skills (electronews-creator, crea-schede-prodotto, proofreading) adapted for the sidebar with auto-fetch awareness and anti-hallucination rules.
+
+---
+
 ## [0.7.16] - 2026-06-06
 
 ### Added

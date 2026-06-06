@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.12] - 2026-06-05
+
+### Added
+- **Copy button on chat responses**: each assistant message in the sidebar chat now shows a "Copy" button on hover that copies the full response to the clipboard, with a "Copied" confirmation. Includes a fallback for contexts where the async clipboard API is unavailable.
+
+---
+
 ## [0.7.11] - 2026-06-05
 
 ### Added

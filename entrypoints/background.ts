@@ -1093,6 +1093,51 @@ function getSyncCounts(snapshot: SyncDataSnapshot): SyncCounts {
   };
 }
 
+const URL_REGEX = /https?:\/\/[^\s<>"')]+/gi;
+
+/**
+ * Extracts up to 3 URLs from the prompt, fetches each via the web_fetch tool, and returns
+ * a context block with the real page content. This makes URL-based answers reliable instead
+ * of depending on the model to (inconsistently) decide to call web_fetch itself.
+ * Returns an empty string when there are no URLs or web_fetch is unavailable.
+ */
+async function autoFetchPromptUrls(
+  prompt: string,
+  descriptors: ToolDescriptor[],
+  excludeTabId?: number,
+): Promise<string> {
+  const hasWebFetch = descriptors.some((d) => (d.invocationName ?? d.name) === 'web_fetch');
+  if (!hasWebFetch) return '';
+
+  const urls = Array.from(new Set(prompt.match(URL_REGEX) ?? []))
+    .map((u) => u.replace(/[.,;]+$/, '')) // strip trailing punctuation
+    .slice(0, 3);
+  if (urls.length === 0) return '';
+
+  // Show a transient status while fetching (replaced by the real answer once streaming starts)
+  broadcastChatChunk({ text: `🔄 Recupero ${urls.length > 1 ? 'pagine' : 'pagina'}…`, done: false }, excludeTabId);
+
+  const blocks: string[] = [];
+  for (const url of urls) {
+    try {
+      const result = await executeRuntimeToolCall(
+        { name: 'web_fetch', payload: { url }, raw: '' },
+        'sidepanel_chat',
+      );
+      const content = result.ok ? ((result.output as { content?: string } | undefined)?.content ?? '') : '';
+      if (result.ok && content) {
+        blocks.push(`<pagina url="${url}">\n${content}\n</pagina>`);
+      } else {
+        blocks.push(`<pagina url="${url}" errore="true">Impossibile recuperare la pagina: ${result.error?.message ?? result.summary ?? 'errore sconosciuto'}</pagina>`);
+      }
+    } catch (err) {
+      blocks.push(`<pagina url="${url}" errore="true">Impossibile recuperare la pagina: ${err instanceof Error ? err.message : String(err)}</pagina>`);
+    }
+  }
+
+  return blocks.join('\n\n');
+}
+
 async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
   const headers = await loadClientHeadersFromStorage();
   if (!headers) {
@@ -1140,6 +1185,15 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
 
     const enabledDescriptors = toolDescriptors.filter((t) => t.execution.enabled);
 
+    // Auto-fetch any URLs in the prompt and inject their content directly.
+    // DeepSeek calls web_fetch unreliably (often skipping it and hallucinating while
+    // claiming it fetched), so we pre-fetch URLs in the background and hand the model the
+    // real page content. This guarantees grounded answers regardless of the model's choice.
+    const fetchedContext = await autoFetchPromptUrls(effectivePrompt, enabledDescriptors, excludeTabId);
+    const promptWithContext = fetchedContext
+      ? `${effectivePrompt}\n\n[CONTENUTO REALE DELLE PAGINE — usa ESCLUSIVAMENTE questi dati, non inventare]\n${fetchedContext}\n[/CONTENUTO REALE]`
+      : effectivePrompt;
+
     // On first turn: inject full system context (memories, preset/skill, tools).
     // On subsequent turns: only inject tools so the model can still call them,
     // but skip the system preamble to avoid confusing the conversation context.
@@ -1153,7 +1207,7 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
       ? memories
       : [];
 
-    const { augmented } = buildPromptAugmentation(effectivePrompt, {
+    const { augmented } = buildPromptAugmentation(promptWithContext, {
       memories: injectMemories,
       presetContent,
       toolDescriptors: enabledDescriptors,

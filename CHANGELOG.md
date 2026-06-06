@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.11] - 2026-06-05
+
+### Added
+- **Automatic URL fetching in sidebar chat**: when a message contains one or more URLs, the extension now fetches their real page content in the background and injects it into the prompt before sending it to DeepSeek. This fixes the core reliability problem where DeepSeek would inconsistently skip the `web_fetch` tool and fabricate page content while claiming it had read the page. Up to 3 URLs per message are fetched; a "🔄 Recupero pagina…" status is shown while fetching.
+
+---
+
 ## [0.7.10] - 2026-06-05
 
 ### Changed

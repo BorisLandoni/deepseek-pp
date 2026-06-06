@@ -340,6 +340,25 @@ async function performWebFetch(call: ToolCall): Promise<ToolResult> {
     }
 
     const extracted = contentType.includes('text/html') ? extractTextFromHtml(text) : text;
+
+    // Detect bot-protection / JS-challenge pages (Cloudflare, etc.). These return a tiny
+    // placeholder ("Just a moment… Enable JavaScript") instead of the real content. Returning
+    // it as success would let the model treat the challenge text as the page — or worse,
+    // ignore it and fabricate. Surface it as a clear, non-retryable failure instead.
+    if (isBotChallengePage(text, extracted)) {
+      return {
+        ok: false,
+        name: call.name,
+        summary: 'Page blocked by bot protection',
+        detail: `${url} is protected by an anti-bot / JavaScript challenge (e.g. Cloudflare) and cannot be read automatically. Do NOT generate any content from memory. Tell the user this page cannot be fetched and ask them to paste the page text directly.`,
+        error: {
+          code: 'fetch_bot_challenge',
+          message: `${url} returned a bot-protection challenge page; real content is not accessible. Retrying will not help.`,
+          retryable: false,
+        },
+      };
+    }
+
     const maxLength = 50_000;
     const truncated = extracted.length > maxLength;
     const outputText = truncated
@@ -386,6 +405,32 @@ async function performWebFetch(call: ToolCall): Promise<ToolResult> {
       },
     };
   }
+}
+
+/**
+ * Heuristically detects anti-bot / JavaScript-challenge interstitials (Cloudflare,
+ * "Just a moment…", "Checking your browser", etc.). These pages contain almost no real
+ * text but return HTTP 200, so they must be caught explicitly.
+ */
+function isBotChallengePage(rawHtml: string, extractedText: string): boolean {
+  const haystack = `${rawHtml.slice(0, 4000)} ${extractedText}`.toLowerCase();
+  const markers = [
+    'just a moment',
+    'enable javascript and cookies to continue',
+    'checking your browser before accessing',
+    'cf-browser-verification',
+    'cf-challenge',
+    'challenge-platform',
+    'attention required! | cloudflare',
+    'ddos protection by',
+    'please turn javascript on',
+    'verifying you are human',
+    'needs to review the security of your connection',
+  ];
+  if (markers.some((m) => haystack.includes(m))) return true;
+  // An HTML page that reduces to almost no visible text is almost always an interstitial.
+  if (rawHtml.length > 0 && extractedText.length < 80) return true;
+  return false;
 }
 
 /** Returns true if the extension currently has active host access for the given origin. */

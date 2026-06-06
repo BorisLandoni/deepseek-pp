@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.13] - 2026-06-05
+
+### Fixed
+- **Bot-protected pages no longer cause fabricated content**: `web_fetch` now detects anti-bot / JavaScript-challenge interstitials (Cloudflare "Just a moment…", "Checking your browser", near-empty HTML, etc.) and returns a clear non-retryable error instead of handing the challenge placeholder to the model. This prevents the model from treating a challenge page as real content or hallucinating product data from memory when a page (e.g. excelitas.com) cannot actually be read.
+
+---
+
 ## [0.7.12] - 2026-06-05
 
 ### Added

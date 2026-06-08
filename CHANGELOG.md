@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.20] - 2026-06-06
+
+### Added
+- **Chat transcript persists across open/close**: the visible messages now survive closing and reopening the sidebar, so you can tell at a glance that the conversation is still in memory. The transcript is restored on open and cleared only when you press "New session" (which also resets the conversation memory).
+
+---
+
 ## [0.7.19] - 2026-06-06
 
 ### Changed

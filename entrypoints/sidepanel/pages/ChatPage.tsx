@@ -7,10 +7,39 @@ import { consumePendingText, onPendingText } from '../pending-text';
 type NoticeMessage = { role: 'notice'; text: string };
 type DisplayMessage = ChatMessageType | NoticeMessage;
 
+// Persists the visible transcript so the chat survives closing/reopening the sidebar.
+// Cleared only on "New session". The conversation memory (session id) lives in the
+// background; this just keeps the on-screen messages in sync with it.
+const CHAT_MESSAGES_KEY = 'deepseek_pp_chat_messages';
+
 export default function ChatPage() {
   const { t, language } = useLanguage();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const [copiedAll, setCopiedAll] = useState(false);
+
+  // Restore persisted messages on mount (before allowing any persistence to run).
+  useEffect(() => {
+    chrome.storage.local.get(CHAT_MESSAGES_KEY)
+      .then((data) => {
+        const saved = data[CHAT_MESSAGES_KEY];
+        if (Array.isArray(saved) && saved.length > 0) setMessages(saved as DisplayMessage[]);
+      })
+      .catch(() => {})
+      .finally(() => setHydrated(true));
+  }, []);
+
+  // Persist the transcript on every change (chrome.storage.local has no write rate limit).
+  // Notices are excluded so stale warnings don't reappear on reopen.
+  useEffect(() => {
+    if (!hydrated) return;
+    const toSave = messages.filter((m) => m.role !== 'notice');
+    if (toSave.length === 0) {
+      chrome.storage.local.remove(CHAT_MESSAGES_KEY).catch(() => {});
+    } else {
+      chrome.storage.local.set({ [CHAT_MESSAGES_KEY]: toSave }).catch(() => {});
+    }
+  }, [messages, hydrated]);
   const [inputText, setInputText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasToken, setHasToken] = useState<boolean | null>(null);

@@ -1114,7 +1114,9 @@ function getSyncCounts(snapshot: SyncDataSnapshot): SyncCounts {
   };
 }
 
-const URL_REGEX = /https?:\/\/[^\s<>"')]+/gi;
+// Matches full http(s) URLs, www.* URLs, and bare "domain.tld/path" with a common TLD.
+// The TLD allow-list on the protocol-less branch avoids false positives like "config.json/x".
+const URL_REGEX = /https?:\/\/[^\s<>"')]+|www\.[^\s<>"')]+|(?<![@\w.])[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|eu|it|io|co|shop|store|info|biz|dev|app|de|fr|es|uk|us|cn|ch|nl)\/[^\s<>"')]+/gi;
 
 /**
  * Extracts up to 3 URLs from the prompt, fetches each via the web_fetch tool, and returns
@@ -1139,9 +1141,12 @@ async function autoFetchPromptUrls(
   const hasWebFetch = descriptors.some((d) => (d.invocationName ?? d.name) === 'web_fetch');
   if (!hasWebFetch) return { context: '', urlCount: 0, successCount: 0 };
 
-  const urls = Array.from(new Set(prompt.match(URL_REGEX) ?? []))
-    .map((u) => u.replace(/[.,;]+$/, '')) // strip trailing punctuation
-    .slice(0, 3);
+  const urls = Array.from(new Set(
+    (prompt.match(URL_REGEX) ?? [])
+      .map((u) => u.replace(/[.,;]+$/, '')) // strip trailing punctuation
+      // Normalise protocol-less URLs (e.g. "fnirsi.com/x") so web_fetch's new URL() works.
+      .map((u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`)),
+  )).slice(0, 3);
   if (urls.length === 0) return { context: '', urlCount: 0, successCount: 0 };
 
   // Show a transient status while fetching (replaced by the real answer once streaming starts)

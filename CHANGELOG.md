@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.18] - 2026-06-06
+
+### Fixed
+- **Auto-fetch now recognizes URLs without a protocol**: pasting `fnirsi.com/products/x` (no `https://`) previously wasn't detected, so the page wasn't fetched and the model fell back to guessing/calling web_fetch itself. The URL matcher now catches protocol-less URLs (`domain.tld/path`) and `www.` URLs, normalizes them to `https://`, and ignores emails and false positives like `config.json/x`.
+
+---
+
 ## [0.7.17] - 2026-06-06
 
 ### Added

@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.19] - 2026-06-06
+
+### Changed
+- **Copy keeps formatting**: the per-message Copy button now copies the rendered response as rich text (`text/html` + clean `text/plain`), so pasting into Gmail, Word, WordPress, etc. preserves bold, headings and lists instead of showing raw Markdown. Falls back to a selection-based copy when the async clipboard API is unavailable.
+
+---
+
 ## [0.7.18] - 2026-06-06
 
 ### Fixed

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { ChatMessage as ChatMessageType } from '../../../core/types';
 import { useLanguage } from '../../../core/i18n/context';
@@ -12,31 +12,61 @@ export default function ChatMessage({ message, isStreaming }: ChatMessageProps) 
   const { language } = useLanguage();
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
+  const proseRef = useRef<HTMLDivElement>(null);
 
   const copyLabel = language === 'it' ? 'Copia' : 'Copy';
   const copiedLabel = language === 'it' ? 'Copiato' : 'Copied';
 
+  const markCopied = () => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   const handleCopy = async () => {
+    const node = proseRef.current;
+    const html = node?.innerHTML ?? '';
+    // Plain fallback: rendered text (no markdown symbols) so plain-text targets stay clean.
+    const plain = node?.innerText ?? message.text;
+
+    // Preferred path: write BOTH text/html (keeps bold, headings, lists when pasted into
+    // rich editors like Gmail/Word/WordPress) and text/plain (for plain fields).
+    try {
+      if (html && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([plain], { type: 'text/plain' }),
+          }),
+        ]);
+        markCopied();
+        return;
+      }
+    } catch {
+      /* fall through to selection-based copy */
+    }
+
+    // Fallback: select the rendered node and use execCommand — this also carries formatting.
+    try {
+      if (node) {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        document.execCommand('copy');
+        selection?.removeAllRanges();
+        markCopied();
+        return;
+      }
+    } catch {
+      /* last resort below */
+    }
+
     try {
       await navigator.clipboard.writeText(message.text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      markCopied();
     } catch {
-      // Clipboard API can fail without focus/permission — fall back to a textarea copy.
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = message.text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      } catch {
-        /* ignore */
-      }
+      /* ignore */
     }
   };
 
@@ -54,7 +84,10 @@ export default function ChatMessage({ message, isStreaming }: ChatMessageProps) 
         {isUser ? (
           <span className="whitespace-pre-wrap">{message.text}</span>
         ) : (
-          <div className="prose prose-sm max-w-none [&_pre]:overflow-x-auto [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:bg-[var(--ds-bg)] [&_code]:text-sm">
+          <div
+            ref={proseRef}
+            className="prose prose-sm max-w-none [&_pre]:overflow-x-auto [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:bg-[var(--ds-bg)] [&_code]:text-sm"
+          >
             <ReactMarkdown>{message.text}</ReactMarkdown>
           </div>
         )}

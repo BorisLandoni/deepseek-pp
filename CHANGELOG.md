@@ -6,6 +6,17 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.25] - 2026-06-06
+
+### Fixed
+- **Skills now work on attached files and the current page**: previously, combining a skill with the "Ask about page" toggle wrapped the prompt so the `/skill` prefix was no longer at the start and the skill wasn't triggered. The user's text (including any `/skill` command) now always stays at the front, with page/file content appended in a single `[CONTENUTO REALE]` block — the same marker used by URL auto-fetch — so skills apply uniformly to pasted text, URLs, attached files and the displayed page.
+- Attached files and page content now share one consistent context marker (previously `[FILE ALLEGATI]` / `[CONTENUTO PAGINA]` / `[CONTENUTO REALE DELLE PAGINE]` were inconsistent and didn't match what skills looked for).
+
+### Changed
+- Updated `skills-export/futura-skills.json` so the Futura skills reference the unified `[CONTENUTO REALE]` block and explicitly handle text, URL, file and page sources. Re-import to update.
+
+---
+
 ## [0.7.24] - 2026-06-06
 
 ### Fixed

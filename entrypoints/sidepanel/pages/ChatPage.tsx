@@ -318,51 +318,58 @@ export default function ChatPage() {
 
   const removeAttachment = (name: string) => setAttachments((prev) => prev.filter((a) => a.name !== name));
 
-  const buildAttachmentContext = (): string => {
+  // File blocks only (the shared [CONTENUTO REALE] wrapper is added in sendMessage).
+  const buildAttachmentBlocks = (): string => {
     if (attachments.length === 0) return '';
-    const blocks = attachments
+    return '\n\n' + attachments
       .map((a) => `<file nome="${a.name}"${a.truncated ? ' troncato="true"' : ''}>\n${a.content}\n</file>`)
       .join('\n\n');
-    return `\n\n[FILE ALLEGATI — usa il loro contenuto per rispondere]\n${blocks}\n[/FILE ALLEGATI]`;
   };
 
   const sendMessage = async () => {
     const text = inputText.trim();
     if ((!text && attachments.length === 0) || isStreaming) return;
 
-    // With attachments: inject file content, show a compact label, skip URL auto-fetch.
-    if (attachments.length > 0) {
-      const fileNames = attachments.map((a) => a.name).join(', ');
-      const display = text
-        ? `${text}\n\n📎 ${fileNames}`
-        : `📎 ${fileNames}`;
-      const question = text || (language === 'it'
-        ? 'Analizza i file allegati e dimmi cosa contengono.'
-        : 'Analyze the attached files and tell me what they contain.');
-      const langName = SUMMARY_LANG_NAMES[summaryLang];
-      // Force the reply language: otherwise the model mirrors the file's language
-      // (e.g. a Chinese file → Chinese answer) even when the user wrote in another language.
-      const full = `${question}\n\n(Rispondi in ${langName}. Riporta eventuali contenuti del file così come sono, senza tradurli, se l'utente chiede di mostrarli.)${buildAttachmentContext()}`;
-      setInputText('');
-      setAttachments([]);
-      submitPrompt(display, full, { skipAutoFetch: true });
-      return;
-    }
+    // Gather context from attachments and/or the active page into one shared block.
+    let context = '';
+    const labels: string[] = [];
 
-    if (!text) return;
+    if (attachments.length > 0) {
+      context += buildAttachmentBlocks();
+      labels.push(`📎 ${attachments.map((a) => a.name).join(', ')}`);
+    }
 
     if (usePage) {
       const page = await getPage();
       if (!page?.ok || !page.text) { showPageNotice(page?.error); return; }
-      const langName = SUMMARY_LANG_NAMES[summaryLang];
-      setInputText('');
-      const full = `Rispondi alla domanda dell'utente basandoti sul contenuto della pagina web qui sotto. Usa SOLO le informazioni presenti nel testo; se la risposta non c'è, dillo. Rispondi in ${langName}.\n\nDomanda: ${text}\n\n[CONTENUTO PAGINA: ${page.title ?? ''} — ${page.url ?? ''}]\n${page.text}\n[/CONTENUTO PAGINA]`;
-      submitPrompt(text, full, { skipAutoFetch: true });
-      return;
+      const safeTitle = (page.title ?? '').replace(/"/g, "'");
+      context += `\n\n<pagina titolo="${safeTitle}" url="${page.url ?? ''}">\n${page.text}\n</pagina>`;
+      labels.push(`📄 ${page.title || page.url}`);
     }
 
+    const hasContext = context.length > 0;
+    const langName = SUMMARY_LANG_NAMES[summaryLang];
+
+    // The user's typed text (which may start with a /skill command) MUST stay at the very
+    // start so the skill parser detects it. The provided content goes AFTER, in a single
+    // [CONTENUTO REALE] block — the same marker the auto-fetch/skills already use — so skills
+    // work uniformly on pasted text, URLs, attached files and the current page.
+    const userPart = text || (language === 'it'
+      ? 'Analizza il contenuto fornito qui sotto e dimmi cosa contiene.'
+      : 'Analyze the provided content below and tell me what it contains.');
+
+    let full = userPart;
+    if (hasContext) {
+      full = `${userPart}\n\n[CONTENUTO REALE — fonte fornita dal sistema (pagina e/o file). Usa ESCLUSIVAMENTE questo testo come fonte, non inventare. Rispondi in ${langName}. Se l'utente chiede di mostrare il contenuto, riportalo così com'è senza tradurlo.]${context}\n[/CONTENUTO REALE]`;
+    }
+
+    const display = labels.length > 0
+      ? (text ? `${text}\n\n${labels.join('   ')}` : labels.join('   '))
+      : text;
+
     setInputText('');
-    submitPrompt(text, text);
+    setAttachments([]);
+    submitPrompt(display, full, { skipAutoFetch: hasContext });
   };
 
   const newSession = () => {

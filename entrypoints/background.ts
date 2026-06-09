@@ -1308,7 +1308,7 @@ async function handleChatSubmitPrompt(
     }
 
     const promptWithContext = fetched.context
-      ? `${effectivePrompt}\n\n[CONTENUTO REALE DELLE PAGINE — usa ESCLUSIVAMENTE questi dati, non inventare]\n${fetched.context}\n[/CONTENUTO REALE]`
+      ? `${effectivePrompt}\n\n[CONTENUTO REALE — fonte fornita dal sistema (pagina e/o file). Usa ESCLUSIVAMENTE questo testo come fonte, non inventare.]\n${fetched.context}\n[/CONTENUTO REALE]`
       : effectivePrompt;
 
     // On first turn: inject full system context (memories, preset/skill, tools).

@@ -119,9 +119,10 @@ export async function createChatSession(clientHeaders: Record<string, string>): 
 export async function createPowHeaders(
   clientHeaders: Record<string, string>,
   wasmUrl?: string,
+  targetPath: string = COMPLETION_PATH,
 ): Promise<Record<string, string>> {
   try {
-    const challenge = await createPowChallenge(clientHeaders);
+    const challenge = await createPowChallenge(clientHeaders, targetPath);
     const answer = await solvePowChallenge(challenge, wasmUrl);
     return {
       'X-DS-PoW-Response': base64EncodeUtf8(JSON.stringify({
@@ -130,7 +131,7 @@ export async function createPowHeaders(
         salt: answer.salt,
         answer: answer.answer,
         signature: answer.signature,
-        target_path: COMPLETION_PATH,
+        target_path: targetPath,
       })),
     };
   } catch (err) {
@@ -138,6 +139,87 @@ export async function createPowHeaders(
     if (err instanceof DeepSeekAuthError) throw err;
     throw new DeepSeekPowError(err instanceof Error ? err.message : String(err));
   }
+}
+
+const FILE_UPLOAD_PATH = '/api/v0/file/upload_file';
+const FILE_FETCH_PATH = '/api/v0/file/fetch_files';
+
+/**
+ * Uploads a file (e.g. an image) to DeepSeek and returns its file id. The upload endpoint
+ * requires a PoW challenge bound to its own target_path, plus the standard client headers.
+ * Reverse-engineered from the web app: POST multipart {file}, response data.biz_data.id.
+ */
+export async function uploadFileToDeepSeek(
+  fileBlob: Blob,
+  fileName: string,
+  clientHeaders: Record<string, string>,
+  wasmUrl?: string,
+): Promise<string> {
+  const powHeaders = await createPowHeaders(clientHeaders, wasmUrl, FILE_UPLOAD_PATH);
+  const form = new FormData();
+  form.append('file', fileBlob, fileName);
+
+  const response = await fetch(new URL(FILE_UPLOAD_PATH, DEEPSEEK_API_URL).href, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      // NB: do NOT set content-type — the browser adds the multipart boundary.
+      accept: 'application/json',
+      ...clientHeaders,
+      ...powHeaders,
+      'x-file-size': String(fileBlob.size),
+    },
+    body: form,
+  });
+
+  const json = await readJsonResponse(response, 'DeepSeek file upload');
+  const data = json?.data;
+  if (isAuthBizError(data, json)) {
+    throw new DeepSeekAuthError(`DeepSeek auth token rejected during file upload: ${JSON.stringify(data ?? json)}`);
+  }
+  const id = firstString(data?.biz_data?.id);
+  if (!response.ok || data?.biz_code !== 0 || !id) {
+    throw new DeepSeekPayloadError(`File upload failed: ${JSON.stringify(data ?? json).slice(0, 200)}`, { retryable: true });
+  }
+  return id;
+}
+
+/**
+ * Polls fetch_files until the given file leaves the PENDING state (or a timeout). Best-effort:
+ * tolerates unknown response shapes and just returns once the file no longer reports PENDING.
+ */
+export async function waitForFileReady(
+  fileId: string,
+  clientHeaders: Record<string, string>,
+  timeoutMs = 20_000,
+): Promise<string> {
+  const url = new URL(FILE_FETCH_PATH, DEEPSEEK_API_URL);
+  url.searchParams.set('file_ids', JSON.stringify([fileId]));
+  const start = Date.now();
+  let lastStatus = 'PENDING';
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const response = await fetch(url.href, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { accept: 'application/json', ...clientHeaders },
+      });
+      const json = await response.json().catch(() => null);
+      const biz = json?.data?.biz_data;
+      const list: any[] = Array.isArray(biz) ? biz : Array.isArray(biz?.files) ? biz.files : Array.isArray(biz?.biz_data) ? biz.biz_data : [];
+      const file = list.find((f) => firstString(f?.id) === fileId) ?? list[0];
+      lastStatus = firstString(file?.status) ?? lastStatus;
+      if (lastStatus && lastStatus !== 'PENDING') return lastStatus;
+    } catch {
+      // ignore and retry
+    }
+    await delay(900);
+  }
+  return lastStatus;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function createClientHeaders(options?: { missingTokenMessage?: string }): Record<string, string> {
@@ -496,12 +578,15 @@ function normalizeModelType(modelType: string | null): string {
   return DEFAULT_MODEL_TYPE;
 }
 
-async function createPowChallenge(clientHeaders: Record<string, string>): Promise<PowChallenge> {
+async function createPowChallenge(
+  clientHeaders: Record<string, string>,
+  targetPath: string = COMPLETION_PATH,
+): Promise<PowChallenge> {
   const response = await fetch(new URL(POW_CHALLENGE_PATH, DEEPSEEK_API_URL).href, {
     method: 'POST',
     credentials: 'include',
     headers: { 'content-type': 'application/json', ...clientHeaders },
-    body: JSON.stringify({ target_path: COMPLETION_PATH }),
+    body: JSON.stringify({ target_path: targetPath }),
   });
   const json = await readJsonResponse(response, 'DeepSeek PoW challenge');
   const data = json?.data;

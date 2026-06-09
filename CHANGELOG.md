@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.26] - 2026-06-06
+
+### Added
+- **Image analysis (vision)**: you can now attach images in chat. They are uploaded to DeepSeek (via the reverse-engineered `upload_file` endpoint with its own PoW challenge) and referenced in the completion, so the model can actually see and analyze them. Up to 4 images, 8 MB each; image thumbnails show in the attachment chips. Combine with a question to ask about the image.
+
+---
+
 ## [0.7.25] - 2026-06-06
 
 ### Fixed

@@ -86,6 +86,8 @@ import {
   createPowHeaders,
   submitPromptStreaming,
   loadClientHeadersFromStorage,
+  uploadFileToDeepSeek,
+  waitForFileReady,
 } from '../core/deepseek/adapter';
 import { buildPromptAugmentation } from '../core/prompt';
 import { extractToolCalls } from '../core/interceptor/tool-parser';
@@ -807,13 +809,15 @@ async function handleMessage(
     }
 
     case 'CHAT_SUBMIT_PROMPT': {
-      const { text, skipAutoFetch } = message.payload as { text: string; skipAutoFetch?: boolean };
+      const { text, skipAutoFetch, images } = message.payload as {
+        text: string; skipAutoFetch?: boolean; images?: { name: string; dataUrl: string }[];
+      };
       if (!(await getChatEnabled())) {
         return { ok: false, error: 'chat_disabled' };
       }
-      if (!text?.trim()) return { ok: false, error: 'empty_prompt' };
+      if (!text?.trim() && !(images && images.length)) return { ok: false, error: 'empty_prompt' };
       // Fire and forget — the streaming response is broadcast
-      handleChatSubmitPrompt(text, sender.tab?.id, { skipAutoFetch }).catch(() => {});
+      handleChatSubmitPrompt(text, sender.tab?.id, { skipAutoFetch, images }).catch(() => {});
       return { ok: true };
     }
 
@@ -1237,10 +1241,15 @@ async function getActivePageContent(): Promise<
   }
 }
 
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl);
+  return response.blob();
+}
+
 async function handleChatSubmitPrompt(
   prompt: string,
   excludeTabId?: number,
-  options?: { skipAutoFetch?: boolean },
+  options?: { skipAutoFetch?: boolean; images?: { name: string; dataUrl: string }[] },
 ) {
   const headers = await loadClientHeadersFromStorage();
   if (!headers) {
@@ -1331,6 +1340,24 @@ async function handleChatSubmitPrompt(
       thinkingEnabled: false,
     });
 
+    // Upload any attached images and collect their file ids to reference in the completion.
+    const refFileIds: string[] = [];
+    if (options?.images?.length) {
+      for (const img of options.images.slice(0, 4)) {
+        broadcastChatChunk({ text: `🖼️ Carico ${img.name}…`, done: false }, excludeTabId);
+        try {
+          const blob = await dataUrlToBlob(img.dataUrl);
+          const fileId = await uploadFileToDeepSeek(blob, img.name, headers);
+          await waitForFileReady(fileId, headers);
+          refFileIds.push(fileId);
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          broadcastChatChunk({ text: '', done: true, error: `Caricamento immagine "${img.name}" non riuscito: ${detail}` }, excludeTabId);
+          return;
+        }
+      }
+    }
+
     const powHeaders = await createPowHeaders(headers);
 
     const initialInput = {
@@ -1338,7 +1365,7 @@ async function handleChatSubmitPrompt(
       parentMessageId: chatParentMessageId,
       modelType: null,
       prompt: augmented,
-      refFileIds: [],
+      refFileIds,
       thinkingEnabled: false,
       searchEnabled: false,
       clientHeaders: headers,
@@ -1435,6 +1462,7 @@ async function runSidepanelToolLoop(
       ...currentInput,
       prompt: continuationPrompt,
       parentMessageId: chatParentMessageId,
+      refFileIds: [], // images are referenced only on the first turn
     };
   }
 

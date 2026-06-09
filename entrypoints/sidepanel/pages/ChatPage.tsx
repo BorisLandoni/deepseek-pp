@@ -23,12 +23,15 @@ const SUMMARY_LANG_NAMES: Record<SummaryLang, string> = {
 
 interface Attachment {
   name: string;
-  content: string;
-  truncated: boolean;
+  kind: 'text' | 'image';
+  content?: string;   // extracted text (text/pdf files)
+  dataUrl?: string;   // image data URL
+  truncated?: boolean;
 }
 
 const MAX_FILES = 5;
 const MAX_FILE_CHARS = 200_000;
+const MAX_IMAGE_BYTES = 8_000_000;
 // Text-like file extensions we can read and inject directly.
 const TEXT_FILE_EXT = /\.(txt|text|md|markdown|csv|tsv|json|jsonl|ndjson|xml|yaml|yml|ini|cfg|conf|env|log|sql|js|mjs|cjs|ts|tsx|jsx|py|java|c|h|cpp|hpp|cc|cs|go|rs|rb|php|swift|kt|sh|bash|zsh|bat|ps1|css|scss|less|html|htm|svg|toml|properties|gradle|dockerfile|gitignore|R|m|lua|pl)$/i;
 
@@ -207,13 +210,19 @@ export default function ChatPage() {
   };
 
   // Submit a prompt while showing a (possibly shorter) label as the user bubble.
-  const submitPrompt = (displayText: string, fullText: string, opts?: { skipAutoFetch?: boolean }) => {
+  const submitPrompt = (
+    displayText: string,
+    fullText: string,
+    opts?: { skipAutoFetch?: boolean; images?: { name: string; dataUrl: string }[] },
+  ) => {
     if (isStreaming) return;
     setMessages((prev) => [...prev, { role: 'user', text: displayText }]);
     setIsStreaming(true);
     setError(null);
-    chrome.runtime.sendMessage({ type: 'CHAT_SUBMIT_PROMPT', payload: { text: fullText, skipAutoFetch: opts?.skipAutoFetch } })
-      .catch((err: Error) => { setError(err.message); setIsStreaming(false); });
+    chrome.runtime.sendMessage({
+      type: 'CHAT_SUBMIT_PROMPT',
+      payload: { text: fullText, skipAutoFetch: opts?.skipAutoFetch, images: opts?.images },
+    }).catch((err: Error) => { setError(err.message); setIsStreaming(false); });
   };
 
   const pageErrorText = (error?: string) => {
@@ -259,6 +268,32 @@ export default function ChatPage() {
         showPageNotice(language === 'it' ? `Massimo ${MAX_FILES} file.` : `Max ${MAX_FILES} files.`);
         break;
       }
+      // Image: upload to DeepSeek for vision analysis (read as data URL, sent to background).
+      const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|heic)$/i.test(file.name);
+      if (isImage) {
+        if (file.size > MAX_IMAGE_BYTES) {
+          setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
+            ? `"${file.name}": immagine troppo grande (max 8 MB).`
+            : `"${file.name}": image too large (max 8 MB).`) }]);
+          continue;
+        }
+        if (next.some((a) => a.name === file.name)) continue;
+        try {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result));
+            r.onerror = () => reject(new Error('read error'));
+            r.readAsDataURL(file);
+          });
+          next.push({ name: file.name, kind: 'image', dataUrl });
+        } catch {
+          setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
+            ? `Impossibile leggere l'immagine "${file.name}".`
+            : `Could not read image "${file.name}".`) }]);
+        }
+        continue;
+      }
+
       // PDF: extract text via the lazily-loaded pdf.js helper.
       const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
       if (isPdf) {
@@ -275,7 +310,7 @@ export default function ChatPage() {
           let content = result.text;
           const truncated = content.length > MAX_FILE_CHARS || result.pagesRead < result.pages;
           if (content.length > MAX_FILE_CHARS) content = content.slice(0, MAX_FILE_CHARS);
-          next.push({ name: file.name, content, truncated });
+          next.push({ name: file.name, kind: 'text', content, truncated });
         } catch (e) {
           setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
             ? `Impossibile leggere il PDF "${file.name}": ${e instanceof Error ? e.message : String(e)}`
@@ -305,7 +340,7 @@ export default function ChatPage() {
         const truncated = content.length > MAX_FILE_CHARS;
         if (truncated) content = content.slice(0, MAX_FILE_CHARS);
         if (next.some((a) => a.name === file.name)) continue; // avoid duplicates
-        next.push({ name: file.name, content, truncated });
+        next.push({ name: file.name, kind: 'text', content, truncated });
       } catch {
         setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
           ? `Impossibile leggere "${file.name}".`
@@ -318,10 +353,12 @@ export default function ChatPage() {
 
   const removeAttachment = (name: string) => setAttachments((prev) => prev.filter((a) => a.name !== name));
 
-  // File blocks only (the shared [CONTENUTO REALE] wrapper is added in sendMessage).
+  // Text-file blocks only (the shared [CONTENUTO REALE] wrapper is added in sendMessage).
+  // Images are not inlined here — they're uploaded separately and referenced via file ids.
   const buildAttachmentBlocks = (): string => {
-    if (attachments.length === 0) return '';
-    return '\n\n' + attachments
+    const textFiles = attachments.filter((a) => a.kind === 'text');
+    if (textFiles.length === 0) return '';
+    return '\n\n' + textFiles
       .map((a) => `<file nome="${a.name}"${a.truncated ? ' troncato="true"' : ''}>\n${a.content}\n</file>`)
       .join('\n\n');
   };
@@ -334,9 +371,16 @@ export default function ChatPage() {
     let context = '';
     const labels: string[] = [];
 
-    if (attachments.length > 0) {
+    const textFiles = attachments.filter((a) => a.kind === 'text');
+    const imageFiles = attachments.filter((a) => a.kind === 'image' && a.dataUrl);
+    const images = imageFiles.map((a) => ({ name: a.name, dataUrl: a.dataUrl! }));
+
+    if (textFiles.length > 0) {
       context += buildAttachmentBlocks();
-      labels.push(`📎 ${attachments.map((a) => a.name).join(', ')}`);
+      labels.push(`📎 ${textFiles.map((a) => a.name).join(', ')}`);
+    }
+    if (imageFiles.length > 0) {
+      labels.push(`🖼️ ${imageFiles.map((a) => a.name).join(', ')}`);
     }
 
     if (usePage) {
@@ -354,13 +398,15 @@ export default function ChatPage() {
     // start so the skill parser detects it. The provided content goes AFTER, in a single
     // [CONTENUTO REALE] block — the same marker the auto-fetch/skills already use — so skills
     // work uniformly on pasted text, URLs, attached files and the current page.
-    const userPart = text || (language === 'it'
-      ? 'Analizza il contenuto fornito qui sotto e dimmi cosa contiene.'
-      : 'Analyze the provided content below and tell me what it contains.');
+    const userPart = text || (images.length > 0
+      ? (language === 'it' ? 'Analizza l\'immagine allegata e descrivi in dettaglio cosa mostra.' : 'Analyze the attached image and describe in detail what it shows.')
+      : (language === 'it' ? 'Analizza il contenuto fornito qui sotto e dimmi cosa contiene.' : 'Analyze the provided content below and tell me what it contains.'));
 
     let full = userPart;
     if (hasContext) {
       full = `${userPart}\n\n[CONTENUTO REALE — fonte fornita dal sistema (pagina e/o file). Usa ESCLUSIVAMENTE questo testo come fonte, non inventare. Rispondi in ${langName}. Se l'utente chiede di mostrare il contenuto, riportalo così com'è senza tradurlo.]${context}\n[/CONTENUTO REALE]`;
+    } else if (images.length > 0) {
+      full = `${userPart}\n\n(Rispondi in ${langName}.)`;
     }
 
     const display = labels.length > 0
@@ -369,7 +415,7 @@ export default function ChatPage() {
 
     setInputText('');
     setAttachments([]);
-    submitPrompt(display, full, { skipAutoFetch: hasContext });
+    submitPrompt(display, full, { skipAutoFetch: hasContext, images: images.length ? images : undefined });
   };
 
   const newSession = () => {
@@ -629,7 +675,7 @@ export default function ChatPage() {
           onClick={() => fileInputRef.current?.click()}
           disabled={isStreaming}
           className="ds-btn-secondary px-2.5 py-1 text-[11px] font-medium rounded-lg flex items-center gap-1 disabled:opacity-40"
-          title={language === 'it' ? 'Allega file di testo (txt, md, csv, json, codice…)' : 'Attach text files (txt, md, csv, json, code…)'}
+          title={language === 'it' ? 'Allega file (testo, PDF, immagini)' : 'Attach files (text, PDF, images)'}
         >
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -647,13 +693,17 @@ export default function ChatPage() {
             {attachments.map((a) => (
               <span
                 key={a.name}
-                className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full"
+                className="inline-flex items-center gap-1 text-[11px] pl-1 pr-2 py-0.5 rounded-full"
                 style={{ background: 'var(--ds-blue-light)', color: 'var(--ds-blue)' }}
                 title={a.truncated ? (language === 'it' ? 'File troncato (troppo lungo)' : 'File truncated (too long)') : a.name}
               >
-                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V18a2 2 0 01-2 2z" />
-                </svg>
+                {a.kind === 'image' && a.dataUrl ? (
+                  <img src={a.dataUrl} alt={a.name} className="w-5 h-5 rounded object-cover" />
+                ) : (
+                  <svg className="w-2.5 h-2.5 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V18a2 2 0 01-2 2z" />
+                  </svg>
+                )}
                 <span className="max-w-[120px] truncate">{a.name}</span>
                 {a.truncated && <span className="opacity-70">✂</span>}
                 <button

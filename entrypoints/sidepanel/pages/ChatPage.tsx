@@ -339,7 +339,10 @@ export default function ChatPage() {
       const question = text || (language === 'it'
         ? 'Analizza i file allegati e dimmi cosa contengono.'
         : 'Analyze the attached files and tell me what they contain.');
-      const full = `${question}${buildAttachmentContext()}`;
+      const langName = SUMMARY_LANG_NAMES[summaryLang];
+      // Force the reply language: otherwise the model mirrors the file's language
+      // (e.g. a Chinese file → Chinese answer) even when the user wrote in another language.
+      const full = `${question}\n\n(Rispondi in ${langName}. Riporta eventuali contenuti del file così come sono, senza tradurli, se l'utente chiede di mostrarli.)${buildAttachmentContext()}`;
       setInputText('');
       setAttachments([]);
       submitPrompt(display, full, { skipAutoFetch: true });

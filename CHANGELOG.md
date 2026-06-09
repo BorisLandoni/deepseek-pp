@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.24] - 2026-06-06
+
+### Fixed
+- **Answers about attached files now respect the selected language**: previously the model mirrored the file's language (e.g. a Chinese file produced a Chinese reply). The attachment prompt now forces the reply into the selected language (default = extension language), while still quoting file contents verbatim when asked to show them.
+
+---
+
 ## [0.7.23] - 2026-06-06
 
 ### Added

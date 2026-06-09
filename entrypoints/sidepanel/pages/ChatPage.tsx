@@ -259,14 +259,39 @@ export default function ChatPage() {
         showPageNotice(language === 'it' ? `Massimo ${MAX_FILES} file.` : `Max ${MAX_FILES} files.`);
         break;
       }
+      // PDF: extract text via the lazily-loaded pdf.js helper.
+      const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+      if (isPdf) {
+        if (next.some((a) => a.name === file.name)) continue;
+        try {
+          const { extractPdfText } = await import('../../../core/file/pdf');
+          const result = await extractPdfText(file);
+          if (!result.text.trim()) {
+            setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
+              ? `"${file.name}": nessun testo estraibile (probabilmente un PDF scansionato/immagine).`
+              : `"${file.name}": no extractable text (likely a scanned/image PDF).`) }]);
+            continue;
+          }
+          let content = result.text;
+          const truncated = content.length > MAX_FILE_CHARS || result.pagesRead < result.pages;
+          if (content.length > MAX_FILE_CHARS) content = content.slice(0, MAX_FILE_CHARS);
+          next.push({ name: file.name, content, truncated });
+        } catch (e) {
+          setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
+            ? `Impossibile leggere il PDF "${file.name}": ${e instanceof Error ? e.message : String(e)}`
+            : `Could not read PDF "${file.name}": ${e instanceof Error ? e.message : String(e)}`) }]);
+        }
+        continue;
+      }
+
       const isTextLike = TEXT_FILE_EXT.test(file.name)
         || file.type.startsWith('text/')
         || file.type === 'application/json'
         || file.type === 'application/xml';
       if (!isTextLike) {
         setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
-          ? `"${file.name}": tipo non supportato. Per ora sono supportati solo file di testo (txt, md, csv, json, codice…). PDF/Word/immagini non ancora.`
-          : `"${file.name}": unsupported type. Only text files are supported for now (txt, md, csv, json, code…). PDF/Word/images not yet.`) }]);
+          ? `"${file.name}": tipo non supportato. Sono supportati file di testo (txt, md, csv, json, codice…) e PDF. Word/immagini non ancora.`
+          : `"${file.name}": unsupported type. Text files (txt, md, csv, json, code…) and PDF are supported. Word/images not yet.`) }]);
         continue;
       }
       try {

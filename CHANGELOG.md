@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.23] - 2026-06-06
+
+### Added
+- **PDF attachments**: you can now attach PDF files in chat. Text is extracted with pdf.js (loaded on demand as a separate chunk, so startup stays light; runs within the extension CSP). Up to 50 pages / 200k chars; scanned/image-only PDFs are reported as having no extractable text. Great for datasheets and product specs.
+
+---
+
 ## [0.7.22] - 2026-06-06
 
 ### Added

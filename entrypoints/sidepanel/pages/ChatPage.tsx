@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLanguage } from '../../../core/i18n/context';
 import type { ChatMessage as ChatMessageType, Skill } from '../../../core/types';
 import ChatMessage from '../components/ChatMessage';
@@ -21,6 +21,17 @@ const SUMMARY_LANG_NAMES: Record<SummaryLang, string> = {
   de: 'Deutsch',
 };
 
+interface Attachment {
+  name: string;
+  content: string;
+  truncated: boolean;
+}
+
+const MAX_FILES = 5;
+const MAX_FILE_CHARS = 200_000;
+// Text-like file extensions we can read and inject directly.
+const TEXT_FILE_EXT = /\.(txt|text|md|markdown|csv|tsv|json|jsonl|ndjson|xml|yaml|yml|ini|cfg|conf|env|log|sql|js|mjs|cjs|ts|tsx|jsx|py|java|c|h|cpp|hpp|cc|cs|go|rs|rb|php|swift|kt|sh|bash|zsh|bat|ps1|css|scss|less|html|htm|svg|toml|properties|gradle|dockerfile|gitignore|R|m|lua|pl)$/i;
+
 export default function ChatPage() {
   const { t, language } = useLanguage();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -29,6 +40,8 @@ export default function ChatPage() {
   // Summary/page-question language: defaults to the extension language chosen at startup.
   const [summaryLang, setSummaryLang] = useState<SummaryLang>((language as SummaryLang) ?? 'en');
   const [usePage, setUsePage] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Restore persisted messages on mount (before allowing any persistence to run).
   useEffect(() => {
@@ -238,9 +251,77 @@ export default function ChatPage() {
     submitPrompt(display, full, { skipAutoFetch: true });
   };
 
+  const handleFilesSelected = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const next: Attachment[] = [...attachments];
+    for (const file of Array.from(fileList)) {
+      if (next.length >= MAX_FILES) {
+        showPageNotice(language === 'it' ? `Massimo ${MAX_FILES} file.` : `Max ${MAX_FILES} files.`);
+        break;
+      }
+      const isTextLike = TEXT_FILE_EXT.test(file.name)
+        || file.type.startsWith('text/')
+        || file.type === 'application/json'
+        || file.type === 'application/xml';
+      if (!isTextLike) {
+        setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
+          ? `"${file.name}": tipo non supportato. Per ora sono supportati solo file di testo (txt, md, csv, json, codice…). PDF/Word/immagini non ancora.`
+          : `"${file.name}": unsupported type. Only text files are supported for now (txt, md, csv, json, code…). PDF/Word/images not yet.`) }]);
+        continue;
+      }
+      try {
+        let content = await file.text();
+        if (content.includes('\u0000')) {
+          setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
+            ? `"${file.name}" sembra un file binario, non leggibile come testo.`
+            : `"${file.name}" looks like a binary file, not readable as text.`) }]);
+          continue;
+        }
+        const truncated = content.length > MAX_FILE_CHARS;
+        if (truncated) content = content.slice(0, MAX_FILE_CHARS);
+        if (next.some((a) => a.name === file.name)) continue; // avoid duplicates
+        next.push({ name: file.name, content, truncated });
+      } catch {
+        setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + (language === 'it'
+          ? `Impossibile leggere "${file.name}".`
+          : `Could not read "${file.name}".`) }]);
+      }
+    }
+    setAttachments(next);
+    inputRef.current?.focus();
+  };
+
+  const removeAttachment = (name: string) => setAttachments((prev) => prev.filter((a) => a.name !== name));
+
+  const buildAttachmentContext = (): string => {
+    if (attachments.length === 0) return '';
+    const blocks = attachments
+      .map((a) => `<file nome="${a.name}"${a.truncated ? ' troncato="true"' : ''}>\n${a.content}\n</file>`)
+      .join('\n\n');
+    return `\n\n[FILE ALLEGATI — usa il loro contenuto per rispondere]\n${blocks}\n[/FILE ALLEGATI]`;
+  };
+
   const sendMessage = async () => {
     const text = inputText.trim();
-    if (!text || isStreaming) return;
+    if ((!text && attachments.length === 0) || isStreaming) return;
+
+    // With attachments: inject file content, show a compact label, skip URL auto-fetch.
+    if (attachments.length > 0) {
+      const fileNames = attachments.map((a) => a.name).join(', ');
+      const display = text
+        ? `${text}\n\n📎 ${fileNames}`
+        : `📎 ${fileNames}`;
+      const question = text || (language === 'it'
+        ? 'Analizza i file allegati e dimmi cosa contengono.'
+        : 'Analyze the attached files and tell me what they contain.');
+      const full = `${question}${buildAttachmentContext()}`;
+      setInputText('');
+      setAttachments([]);
+      submitPrompt(display, full, { skipAutoFetch: true });
+      return;
+    }
+
+    if (!text) return;
 
     if (usePage) {
       const page = await getPage();
@@ -501,10 +582,59 @@ export default function ChatPage() {
           </svg>
           {language === 'it' ? 'Chiedi sulla pagina' : 'Ask about page'}
         </button>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => { handleFilesSelected(e.target.files); e.target.value = ''; }}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isStreaming}
+          className="ds-btn-secondary px-2.5 py-1 text-[11px] font-medium rounded-lg flex items-center gap-1 disabled:opacity-40"
+          title={language === 'it' ? 'Allega file di testo (txt, md, csv, json, codice…)' : 'Attach text files (txt, md, csv, json, code…)'}
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+          </svg>
+          {language === 'it' ? 'Allega' : 'Attach'}
+        </button>
       </div>
 
       {/* Input area */}
       <div className="p-3">
+
+        {/* Attached files */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {attachments.map((a) => (
+              <span
+                key={a.name}
+                className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full"
+                style={{ background: 'var(--ds-blue-light)', color: 'var(--ds-blue)' }}
+                title={a.truncated ? (language === 'it' ? 'File troncato (troppo lungo)' : 'File truncated (too long)') : a.name}
+              >
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V18a2 2 0 01-2 2z" />
+                </svg>
+                <span className="max-w-[120px] truncate">{a.name}</span>
+                {a.truncated && <span className="opacity-70">✂</span>}
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(a.name)}
+                  className="ml-0.5 hover:opacity-70"
+                  aria-label={language === 'it' ? 'Rimuovi' : 'Remove'}
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Active skill badge */}
         {activeSkill && (
@@ -580,7 +710,7 @@ export default function ChatPage() {
           />
           <button
             onClick={sendMessage}
-            disabled={isStreaming || !inputText.trim()}
+            disabled={isStreaming || (!inputText.trim() && attachments.length === 0)}
             className="self-end px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40"
             style={{ background: 'var(--ds-accent)', color: '#fff' }}
           >

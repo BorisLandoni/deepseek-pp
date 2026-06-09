@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.22] - 2026-06-06
+
+### Added
+- **Attach files in chat**: an "Attach" button lets you add text-based files (txt, md, csv, json, code, log, html, xml, yaml…) to your message. The file content is injected into the prompt so you can ask questions about it or run skills on it (e.g. `/proofreading` + a file). Up to 5 files, 200k chars each; binary and unsupported types (PDF/Word/images) are reported with a notice. Attached files show as removable chips above the input.
+
+---
+
 ## [0.7.21] - 2026-06-06
 
 ### Added

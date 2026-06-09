@@ -12,11 +12,23 @@ type DisplayMessage = ChatMessageType | NoticeMessage;
 // background; this just keeps the on-screen messages in sync with it.
 const CHAT_MESSAGES_KEY = 'deepseek_pp_chat_messages';
 
+type SummaryLang = 'it' | 'en' | 'es' | 'fr' | 'de';
+const SUMMARY_LANG_NAMES: Record<SummaryLang, string> = {
+  it: 'italiano',
+  en: 'English',
+  es: 'español',
+  fr: 'français',
+  de: 'Deutsch',
+};
+
 export default function ChatPage() {
   const { t, language } = useLanguage();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [copiedAll, setCopiedAll] = useState(false);
+  // Summary/page-question language: defaults to the extension language chosen at startup.
+  const [summaryLang, setSummaryLang] = useState<SummaryLang>((language as SummaryLang) ?? 'en');
+  const [usePage, setUsePage] = useState(false);
 
   // Restore persisted messages on mount (before allowing any persistence to run).
   useEffect(() => {
@@ -181,17 +193,67 @@ export default function ChatPage() {
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
-  const sendMessage = () => {
+  // Submit a prompt while showing a (possibly shorter) label as the user bubble.
+  const submitPrompt = (displayText: string, fullText: string, opts?: { skipAutoFetch?: boolean }) => {
+    if (isStreaming) return;
+    setMessages((prev) => [...prev, { role: 'user', text: displayText }]);
+    setIsStreaming(true);
+    setError(null);
+    chrome.runtime.sendMessage({ type: 'CHAT_SUBMIT_PROMPT', payload: { text: fullText, skipAutoFetch: opts?.skipAutoFetch } })
+      .catch((err: Error) => { setError(err.message); setIsStreaming(false); });
+  };
+
+  const pageErrorText = (error?: string) => {
+    const it = language === 'it';
+    switch (error) {
+      case 'restricted_page': return it ? 'Questa pagina del browser non è accessibile (es. chrome://, Web Store, pagine dell’estensione).' : 'This browser page is not accessible (e.g. chrome://, Web Store, extension pages).';
+      case 'empty_page': return it ? 'La pagina non contiene testo leggibile.' : 'The page has no readable text.';
+      case 'no_active_tab': return it ? 'Nessuna scheda attiva trovata.' : 'No active tab found.';
+      default: return it ? `Impossibile leggere la pagina${error ? ': ' + error : ''}.` : `Could not read the page${error ? ': ' + error : ''}.`;
+    }
+  };
+
+  const showPageNotice = (error?: string) => {
+    setMessages((prev) => [...prev, { role: 'notice', text: '⚠️ ' + pageErrorText(error) }]);
+  };
+
+  const getPage = async (): Promise<{ ok: boolean; url?: string; title?: string; text?: string; error?: string }> => {
+    try {
+      return await chrome.runtime.sendMessage({ type: 'GET_ACTIVE_PAGE_CONTENT' });
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  };
+
+  const handleSummarize = async () => {
+    if (isStreaming) return;
+    const page = await getPage();
+    if (!page?.ok || !page.text) { showPageNotice(page?.error); return; }
+    const langName = SUMMARY_LANG_NAMES[summaryLang];
+    const where = page.title || page.url || '';
+    const display = language === 'it'
+      ? `📄 Riassumi questa pagina (${langName})${where ? ' — ' + where : ''}`
+      : `📄 Summarize this page (${langName})${where ? ' — ' + where : ''}`;
+    const full = `Fai un riassunto chiaro e ben strutturato della pagina web qui sotto, usando titoletti ed elenchi puntati dove utile. Riporta i punti chiave e i dati principali (prezzi, specifiche, date) SOLO se presenti nel testo. Rispondi in ${langName}.\n\n[CONTENUTO PAGINA: ${page.title ?? ''} — ${page.url ?? ''}]\n${page.text}\n[/CONTENUTO PAGINA]`;
+    submitPrompt(display, full, { skipAutoFetch: true });
+  };
+
+  const sendMessage = async () => {
     const text = inputText.trim();
     if (!text || isStreaming) return;
 
-    setMessages((prev) => [...prev, { role: 'user', text }]);
-    setInputText('');
-    setIsStreaming(true);
-    setError(null);
+    if (usePage) {
+      const page = await getPage();
+      if (!page?.ok || !page.text) { showPageNotice(page?.error); return; }
+      const langName = SUMMARY_LANG_NAMES[summaryLang];
+      setInputText('');
+      const full = `Rispondi alla domanda dell'utente basandoti sul contenuto della pagina web qui sotto. Usa SOLO le informazioni presenti nel testo; se la risposta non c'è, dillo. Rispondi in ${langName}.\n\nDomanda: ${text}\n\n[CONTENUTO PAGINA: ${page.title ?? ''} — ${page.url ?? ''}]\n${page.text}\n[/CONTENUTO PAGINA]`;
+      submitPrompt(text, full, { skipAutoFetch: true });
+      return;
+    }
 
-    chrome.runtime.sendMessage({ type: 'CHAT_SUBMIT_PROMPT', payload: { text } })
-      .catch((err: Error) => { setError(err.message); setIsStreaming(false); });
+    setInputText('');
+    submitPrompt(text, text);
   };
 
   const newSession = () => {
@@ -398,8 +460,51 @@ export default function ChatPage() {
         {error && <div className="text-xs text-red-400 text-center mt-2">{error}</div>}
       </div>
 
+      {/* Page tools: summarize current page + language + ask-about-page toggle */}
+      <div className="px-3 pt-2 flex items-center gap-1.5 flex-wrap" style={{ borderTop: '1px solid var(--ds-border)' }}>
+        <button
+          onClick={handleSummarize}
+          disabled={isStreaming}
+          className="ds-btn-secondary px-2.5 py-1 text-[11px] font-medium rounded-lg flex items-center gap-1 disabled:opacity-40"
+          title={language === 'it' ? 'Riassumi la pagina aperta nel browser' : 'Summarize the page open in the browser'}
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V18a2 2 0 01-2 2z" />
+          </svg>
+          {language === 'it' ? 'Riassumi pagina' : 'Summarize page'}
+        </button>
+
+        <select
+          value={summaryLang}
+          onChange={(e) => setSummaryLang(e.target.value as SummaryLang)}
+          className="text-[11px] rounded-lg px-1.5 py-1 outline-none"
+          style={{ background: 'var(--ds-surface)', color: 'var(--ds-text-secondary)', border: '1px solid var(--ds-border)' }}
+          title={language === 'it' ? 'Lingua del riassunto' : 'Summary language'}
+        >
+          {(Object.keys(SUMMARY_LANG_NAMES) as SummaryLang[]).map((code) => (
+            <option key={code} value={code}>{SUMMARY_LANG_NAMES[code]}</option>
+          ))}
+        </select>
+
+        <button
+          onClick={() => setUsePage((v) => !v)}
+          className="px-2.5 py-1 text-[11px] font-medium rounded-lg flex items-center gap-1 border transition-colors"
+          style={{
+            background: usePage ? 'var(--ds-blue-light)' : 'var(--ds-surface)',
+            color: usePage ? 'var(--ds-blue)' : 'var(--ds-text-tertiary)',
+            borderColor: usePage ? 'var(--ds-selected-border, var(--ds-blue))' : 'var(--ds-border)',
+          }}
+          title={language === 'it' ? 'Se attivo, le tue domande vengono risposte usando la pagina aperta nel browser' : 'When on, your questions are answered using the page open in the browser'}
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+          </svg>
+          {language === 'it' ? 'Chiedi sulla pagina' : 'Ask about page'}
+        </button>
+      </div>
+
       {/* Input area */}
-      <div className="p-3" style={{ borderTop: '1px solid var(--ds-border)' }}>
+      <div className="p-3">
 
         {/* Active skill badge */}
         {activeSkill && (

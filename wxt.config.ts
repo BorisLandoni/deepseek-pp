@@ -24,7 +24,7 @@ function readPackageVersion(): string {
 function createManifest(env: ConfigEnv): UserManifest {
   const isFirefox = env.browser === 'firefox';
   const isChromiumTarget = CHROMIUM_BROWSERS.has(env.browser);
-  const permissions = ['storage', 'alarms', 'nativeMessaging', 'contextMenus'];
+  const permissions = ['storage', 'alarms', 'nativeMessaging', 'contextMenus', 'scripting', 'tabs'];
 
   return {
     name: 'DeepSeek++',

@@ -6,6 +6,15 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.21] - 2026-06-06
+
+### Added
+- **Summarize the current browser page**: a "Summarize page" button in the chat reads the visible text of your active browser tab and produces a structured summary. A language selector (defaulting to the extension language chosen at startup) controls the summary language (Italian, English, Spanish, French, German).
+- **Ask about the current page**: an "Ask about page" toggle — when on, your typed questions are answered using the content of the page open in the browser, in the selected language.
+- Requires the `scripting` and `tabs` permissions to read the active tab (restricted pages like chrome:// and the Web Store are reported with a clear notice).
+
+---
+
 ## [0.7.20] - 2026-06-06
 
 ### Added

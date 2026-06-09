@@ -807,15 +807,18 @@ async function handleMessage(
     }
 
     case 'CHAT_SUBMIT_PROMPT': {
-      const { text } = message.payload as { text: string };
+      const { text, skipAutoFetch } = message.payload as { text: string; skipAutoFetch?: boolean };
       if (!(await getChatEnabled())) {
         return { ok: false, error: 'chat_disabled' };
       }
       if (!text?.trim()) return { ok: false, error: 'empty_prompt' };
       // Fire and forget — the streaming response is broadcast
-      handleChatSubmitPrompt(text, sender.tab?.id).catch(() => {});
+      handleChatSubmitPrompt(text, sender.tab?.id, { skipAutoFetch }).catch(() => {});
       return { ok: true };
     }
+
+    case 'GET_ACTIVE_PAGE_CONTENT':
+      return getActivePageContent();
 
     case 'CHAT_NEW_SESSION':
       chatSessionId = null;
@@ -1195,7 +1198,50 @@ function broadcastChatNotice(text: string, excludeTabId?: number) {
   }
 }
 
-async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
+/**
+ * Reads the visible text of the user's currently active browser tab via scripting injection.
+ * Used by the sidebar "summarize page" / "ask about page" features. Returns a structured error
+ * for restricted pages (chrome://, web store, extension pages) where injection is not allowed.
+ */
+async function getActivePageContent(): Promise<
+  { ok: true; url: string; title: string; text: string } | { ok: false; error: string }
+> {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const tab = tabs[0];
+    if (!tab?.id) return { ok: false, error: 'no_active_tab' };
+    const url = tab.url ?? '';
+    if (/^(chrome|edge|brave|about|chrome-extension|moz-extension|devtools|view-source|file):/i.test(url)
+      || url.includes('chromewebstore.google.com') || url.includes('chrome.google.com/webstore')) {
+      return { ok: false, error: 'restricted_page' };
+    }
+    const injection = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const body = document.body;
+        if (!body) return { title: document.title, text: '' };
+        const clone = body.cloneNode(true) as HTMLElement;
+        clone.querySelectorAll('script, style, noscript, svg, canvas, nav, footer, header, aside')
+          .forEach((el) => el.remove());
+        const raw = (clone as HTMLElement).innerText || '';
+        const text = raw.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+        return { title: document.title, text };
+      },
+    });
+    const data = injection?.[0]?.result as { title?: string; text?: string } | undefined;
+    const text = (data?.text ?? '').slice(0, 50_000);
+    if (!text.trim()) return { ok: false, error: 'empty_page' };
+    return { ok: true, url, title: data?.title ?? tab.title ?? '', text };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function handleChatSubmitPrompt(
+  prompt: string,
+  excludeTabId?: number,
+  options?: { skipAutoFetch?: boolean },
+) {
   const headers = await loadClientHeadersFromStorage();
   if (!headers) {
     broadcastChatChunk({ text: '', done: true, error: 'Please log in to chat.deepseek.com and send a message first to obtain authentication credentials' }, excludeTabId);
@@ -1246,7 +1292,9 @@ async function handleChatSubmitPrompt(prompt: string, excludeTabId?: number) {
     // DeepSeek calls web_fetch unreliably (often skipping it and hallucinating while
     // claiming it fetched), so we pre-fetch URLs in the background and hand the model the
     // real page content. This guarantees grounded answers regardless of the model's choice.
-    const fetched = await autoFetchPromptUrls(effectivePrompt, enabledDescriptors, excludeTabId);
+    const fetched = options?.skipAutoFetch
+      ? { context: '', urlCount: 0, successCount: 0 }
+      : await autoFetchPromptUrls(effectivePrompt, enabledDescriptors, excludeTabId);
 
     // Anti-hallucination guard: when a skill is active and we found URLs but couldn't read
     // ANY of them, do NOT send the request to DeepSeek — it would fabricate content from

@@ -70,20 +70,47 @@ function stripMessageToolCalls(
       if (record) restoredRecords.push(record);
       msg.content = stripToolCalls(msg.content, { descriptors: toolDescriptors });
     }
-    if (msg.fragments && Array.isArray(msg.fragments)) {
-      msg.fragments.forEach((frag: any, fragIndex: number) => {
-        if (typeof frag.content === 'string' && hasToolCallMarker(frag.content, toolDescriptors)) {
-          const record = collectToolCallRestoreRecord(
-            frag.content,
-            `${messageKey}:fragment:${fragIndex}`,
-            toolDescriptors,
-          );
-          if (record) restoredRecords.push(record);
-          frag.content = stripToolCalls(frag.content, { descriptors: toolDescriptors });
+    if (Array.isArray(msg.fragments)) {
+      // Strip across the WHOLE reassembled fragment text, not per-fragment. DeepSeek persists a
+      // streamed answer as an array of fragments, so a <tool>...</tool> block routinely straddles a
+      // fragment boundary; stripping each fragment in isolation leaves both halves intact and the
+      // block reappears on reload. Join -> strip once -> redistribute (mirrors
+      // sanitizeStoredMessageInternalPrompt). Reads/writes content OR text, like the SSE parser.
+      const textFragments = msg.fragments.filter((frag: any) => typeof getFragmentText(frag) === 'string');
+      if (textFragments.length > 0) {
+        const joined = textFragments.map((frag: any) => getFragmentText(frag)).join('');
+        if (hasToolCallMarker(joined, toolDescriptors)) {
+          const stripped = stripToolCalls(joined, { descriptors: toolDescriptors });
+          // Only rewrite the fragments when something was actually removed, so a lone/orphan close
+          // tag does not needlessly collapse the fragment array or record a phantom tool block.
+          if (stripped !== joined) {
+            const record = collectToolCallRestoreRecord(joined, `${messageKey}:fragments`, toolDescriptors);
+            if (record) restoredRecords.push(record);
+            textFragments.forEach((frag: any, fragIndex: number) => {
+              setFragmentText(frag, fragIndex === 0 ? stripped : '');
+            });
+          }
         }
-      });
+      }
     }
   });
+}
+
+function getFragmentText(frag: any): string | null {
+  if (!frag || typeof frag !== 'object') return null;
+  if (typeof frag.content === 'string') return frag.content;
+  if (typeof frag.text === 'string') return frag.text;
+  return null;
+}
+
+function setFragmentText(frag: any, value: string): void {
+  if (!frag || typeof frag !== 'object') return;
+  // Write back to whichever field originally held the string.
+  if (typeof frag.text === 'string' && typeof frag.content !== 'string') {
+    frag.text = value;
+    return;
+  }
+  frag.content = value;
 }
 
 function hasToolCallMarker(text: string, toolDescriptors: readonly ToolDescriptor[]): boolean {
@@ -134,21 +161,21 @@ function sanitizeStoredMessageInternalPrompt(msg: any) {
   if (!Array.isArray(msg.fragments)) return;
 
   const textFragments = msg.fragments
-    .filter((frag: any) => frag && typeof frag.content === 'string');
+    .filter((frag: any) => typeof getFragmentText(frag) === 'string');
 
   if (textFragments.length === 0) return;
 
-  const joined = textFragments.map((frag: any) => frag.content).join('');
+  const joined = textFragments.map((frag: any) => getFragmentText(frag)).join('');
   const sanitizedJoined = sanitizeInternalPromptText(joined);
   if (sanitizedJoined !== joined) {
     textFragments.forEach((frag: any, index: number) => {
-      frag.content = index === 0 ? sanitizedJoined : '';
+      setFragmentText(frag, index === 0 ? sanitizedJoined : '');
     });
     return;
   }
 
   for (const frag of textFragments) {
-    frag.content = sanitizeInternalPromptText(frag.content);
+    setFragmentText(frag, sanitizeInternalPromptText(getFragmentText(frag) as string));
   }
 }
 

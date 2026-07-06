@@ -6,15 +6,18 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// Re-baselined for the IT/EN fork: the prompt templates were translated from the original
+// Chinese, so these hashes reflect the current EN/IT prompt sources. Re-run and update after any
+// intentional edit to core/constants.ts, core/prompt/augmentation.ts, or core/inline-agent/prompt.ts.
 const EXPECTED_HASHES = {
-  systemTemplateChat: '5bca8e90d23381c9605cbfebf7ecb91f28f4010ddbc2a6ccc291fa046fcd6eec',
-  systemTemplateThinking: 'fa31e863e5f54f7a4e48cffdbae0e543028de4a565f77504e66edd707c73b5f3',
-  memoryToolSchemas: 'a64e0a8874552177eba10089d5acfdc2996d0b703f83b1a57e9d76c733da9a7b',
+  systemTemplateChat: '0142ccc4280cbf8b624a03049a159f5bb39a9e9e0640b9b54751e6e88063ddfb',
+  systemTemplateThinking: '30241a565deba2c8c43dd3116aa99ec40936730361cc3bee7dd9e0c2808eee79',
+  memoryToolSchemas: '3a04b9efec1d0e78392c79fe582e028b343451e092e6630a59136eafb52fb982',
   promptAugmentationBuild: '1b42d5b8df743388dfb86ee83e055e00a56fb5389bd7df1afd961c57b45b2335',
-  promptToolSchemaRenderer: '472e3019265d562803501e949e4b05517fcf8a41c67036cc17f481be4fb25918',
-  inlineAgentContinuationPrompt: '72c9a77d04a9d9b06258b3ba97e0f45c7d9c3a95d6beb402e1d3bbba5197b3c5',
-  inlineAgentNudgePrompt: '93bc1a0ce340e6212d30a9af1e345d0f7e1eaab9a495d8c78abb48f4ec94368d',
-  inlineAgentFinalizationPrompt: 'a476d1b4ad4d8f1895e2f1bedeacbc41932257c359106d7c9ecd090e7abff5da',
+  promptToolSchemaRenderer: '4b21928666e28cce6079db921b87011b341f5c2d01ecfa81754afd28ec8a97b4',
+  inlineAgentContinuationPrompt: '9d69b34acce9c2ec00bc8af8e0692cb5d6be1981943cadffaad494971bda9b24',
+  inlineAgentNudgePrompt: '0a4164a55f22f012b44f590dd9f6ac38da6b942357a189a4072b2f4d8440d3d7',
+  inlineAgentFinalizationPrompt: 'e65e1d27a69889d751f050b18737c7ce9fda8008d5f36cd6c157ef4e316524d7',
   inlineAgentPromptHelpers: 'cdb723464379a5ead572eff1d93fd4585d7f845739d67fa214fbbdc0694153c6',
 };
 

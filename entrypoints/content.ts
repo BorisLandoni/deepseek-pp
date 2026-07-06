@@ -2608,47 +2608,92 @@ function stripToolCallTextNodes(root: Element) {
     node = walker.nextNode();
   }
 
-  let activeTool: string | null = null;
-
+  // Scan the CONCATENATION of all accepted text nodes, not each node in isolation. DeepSeek's
+  // markdown renderer can split a tool tag — or its `<...>` delimiters — across several DOM text
+  // nodes (e.g. `<memory` + `_save>`); a per-node regex never matches those, so the block would
+  // stay on screen while textContent still shows the marker (re-scheduling forever). Build one
+  // logical string, find the tool spans over it, then map the surviving text back onto each node
+  // so the document structure (paragraphs, etc.) is preserved.
+  const ranges: Array<{ node: Text; start: number; end: number; original: string }> = [];
+  let full = '';
   for (const textNode of textNodes) {
     const original = textNode.nodeValue ?? '';
-    const sanitizedOriginal = sanitizeInternalPromptText(original);
-    let cursor = 0;
-    let next = '';
+    const sanitized = sanitizeInternalPromptText(original);
+    const start = full.length;
+    full += sanitized;
+    ranges.push({ node: textNode, start, end: full.length, original });
+  }
 
-    while (cursor < sanitizedOriginal.length) {
-      if (activeTool) {
-        const closeRe = new RegExp(`<\\s*/\\s*${escapeRegExp(activeTool)}\\s*>`, 'i');
-        const closeMatch = closeRe.exec(sanitizedOriginal.slice(cursor));
-        if (!closeMatch) {
-          cursor = sanitizedOriginal.length;
-          break;
-        }
-        cursor += closeMatch.index + closeMatch[0].length;
-        activeTool = null;
-        continue;
-      }
+  const removedSpans = computeToolCallSpans(full);
 
-      const openMatch = toolOpenTagRe.exec(sanitizedOriginal.slice(cursor));
-      if (!openMatch) {
-        next += sanitizedOriginal.slice(cursor);
-        break;
-      }
-
-      next += sanitizedOriginal.slice(cursor, cursor + openMatch.index);
-      activeTool = openMatch[1];
-      cursor += openMatch.index + openMatch[0].length;
-    }
-
+  for (const { node, start, end, original } of ranges) {
+    const next = subtractSpans(full, start, end, removedSpans);
     if (next !== original) {
-      textNode.nodeValue = next;
-      if (textNode.parentElement) changedParents.add(textNode.parentElement);
+      node.nodeValue = next;
+      if (node.parentElement) changedParents.add(node.parentElement);
     }
   }
 
   for (const parent of changedParents) {
     pruneEmptyToolContainers(parent, root);
   }
+}
+
+/**
+ * Scans `text` for tool-call blocks and returns the character spans to remove. An open tag
+ * `<tool>` opens a span that runs to its matching `</tool>`; an open tag with no close in the
+ * whole string removes to the end. Works across text-node boundaries because it runs on the
+ * concatenation of all nodes.
+ */
+function computeToolCallSpans(text: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  let cursor = 0;
+  let activeTool: string | null = null;
+  let openStart = -1;
+
+  while (cursor < text.length) {
+    if (activeTool) {
+      const closeRe = new RegExp(`<\\s*/\\s*${escapeRegExp(activeTool)}\\s*>`, 'i');
+      const closeMatch = closeRe.exec(text.slice(cursor));
+      if (!closeMatch) {
+        spans.push({ start: openStart, end: text.length });
+        break;
+      }
+      spans.push({ start: openStart, end: cursor + closeMatch.index + closeMatch[0].length });
+      cursor += closeMatch.index + closeMatch[0].length;
+      activeTool = null;
+      openStart = -1;
+      continue;
+    }
+
+    const openMatch = toolOpenTagRe.exec(text.slice(cursor));
+    if (!openMatch) break;
+    activeTool = openMatch[1];
+    openStart = cursor + openMatch.index;
+    cursor += openMatch.index + openMatch[0].length;
+  }
+
+  return spans;
+}
+
+/** Returns text[start,end) with the given ascending, non-overlapping spans removed. */
+function subtractSpans(
+  text: string,
+  start: number,
+  end: number,
+  spans: Array<{ start: number; end: number }>,
+): string {
+  let out = '';
+  let pos = start;
+  for (const span of spans) {
+    if (span.end <= start || span.start >= end) continue;
+    const cutStart = Math.max(span.start, start);
+    const cutEnd = Math.min(span.end, end);
+    if (cutStart > pos) out += text.slice(pos, cutStart);
+    pos = Math.max(pos, cutEnd);
+  }
+  if (pos < end) out += text.slice(pos, end);
+  return out;
 }
 
 function pruneEmptyToolContainers(start: HTMLElement, boundary: Element) {

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(new URL('..', import.meta.url).pathname);
+const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const failures = [];
 
 const requiredFiles = [
@@ -43,7 +44,9 @@ for (const removed of removedPaths) {
   }
 }
 
-assertContains('entrypoints/sidepanel/App.tsx', "label: '自动化'");
+// Localization-agnostic: this fork translated the UI (IT/EN) and removed the original Chinese
+// label, so assert the automation tab is registered by its stable `key`, not by a hardcoded label.
+assertContains('entrypoints/sidepanel/App.tsx', "key: 'automation'");
 assertContains('entrypoints/sidepanel/App.tsx', "import('./pages/AutomationPage')");
 assertContains('entrypoints/sidepanel/pages/AutomationPage.tsx', 'export default function AutomationPage');
 assertContains('core/automation/runner.ts', 'runDeepSeekAutomation');

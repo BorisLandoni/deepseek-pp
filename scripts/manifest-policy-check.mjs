@@ -1,31 +1,32 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const failures = [];
 const packageJson = readJson('package.json');
 
+// This fork intentionally diverges from the upstream least-privilege model:
+// (1) it requests broad host access DIRECTLY (http/https) rather than as optional permissions, so an
+//     unpacked extension is granted it at load time without the runtime-grant + service-worker-restart
+//     dance that otherwise leaves web_fetch/web_search CORS-blocked (see the comment in wxt.config.ts);
+// (2) it uses `scripting` (background.ts chrome.scripting.executeScript for page auto-fetch) and
+//     `tabs` (tab orchestration / broadcast). Both are exercised in code — see the usage checks below.
+// NOTE for Chrome Web Store submission: broad host_permissions, `scripting` and `tabs` must be
+// justified in docs/chrome-web-store/{privacy-policy,submission}.md before publishing.
+const CHROMIUM_PERMISSIONS = ['storage', 'alarms', 'nativeMessaging', 'contextMenus', 'scripting', 'tabs', 'sidePanel'];
+const FIREFOX_PERMISSIONS = ['storage', 'alarms', 'nativeMessaging', 'contextMenus', 'scripting', 'tabs'];
+
 const targets = [
-  {
-    browser: 'chrome',
-    manifestPath: 'dist/chrome-mv3/manifest.json',
-    permissions: ['storage', 'alarms', 'nativeMessaging', 'contextMenus', 'sidePanel'],
-  },
-  {
-    browser: 'edge',
-    manifestPath: 'dist/edge-mv3/manifest.json',
-    permissions: ['storage', 'alarms', 'nativeMessaging', 'contextMenus', 'sidePanel'],
-  },
-  {
-    browser: 'firefox',
-    manifestPath: 'dist/firefox-mv3/manifest.json',
-    permissions: ['storage', 'alarms', 'nativeMessaging', 'contextMenus'],
-  },
+  { browser: 'chrome', manifestPath: 'dist/chrome-mv3/manifest.json', permissions: CHROMIUM_PERMISSIONS },
+  { browser: 'edge', manifestPath: 'dist/edge-mv3/manifest.json', permissions: CHROMIUM_PERMISSIONS },
+  { browser: 'firefox', manifestPath: 'dist/firefox-mv3/manifest.json', permissions: FIREFOX_PERMISSIONS },
 ];
 
-const expectedHostPermissions = ['*://chat.deepseek.com/*', '*://cn.bing.com/*', '*://www.bing.com/*'];
-const expectedOptionalHostPermissions = ['http://*/*', 'https://*/*'];
+const expectedHostPermissions = [
+  '*://chat.deepseek.com/*', '*://cn.bing.com/*', '*://www.bing.com/*', 'http://*/*', 'https://*/*',
+];
 
 for (const target of targets) {
   const manifest = readJson(target.manifestPath, `Run npm run build:all before npm run verify:manifest-policy.`);
@@ -34,11 +35,6 @@ for (const target of targets) {
   assertEqual(manifest.version, packageJson.version, `${target.browser}: manifest version must match package.json`);
   assertSetEqual(manifest.permissions, target.permissions, `${target.browser}: permissions`);
   assertSetEqual(manifest.host_permissions, expectedHostPermissions, `${target.browser}: host_permissions`);
-  assertSetEqual(
-    manifest.optional_host_permissions,
-    expectedOptionalHostPermissions,
-    `${target.browser}: optional_host_permissions`,
-  );
 
   if (target.permissions.includes('sidePanel')) {
     assert(Boolean(manifest.side_panel?.default_path), `${target.browser}: side_panel.default_path is required`);
@@ -63,6 +59,8 @@ assertIncludes(nativeTransport, 'chrome.runtime.connectNative', 'nativeMessaging
 assertIncludes(background, 'chrome.contextMenus.create', 'contextMenus permission must create menu items');
 assertIncludes(background, 'chrome.contextMenus.onClicked.addListener', 'contextMenus permission must handle clicks');
 assertIncludes(background, 'chrome.sidePanel', 'sidePanel permission must use the side panel API');
+assertIncludes(background, 'chrome.scripting', 'scripting permission must use the scripting API');
+assertIncludes(background, 'chrome.tabs', 'tabs permission must use the tabs API');
 assertIncludes(wxtConfig, 'web_accessible_resources', 'web accessible resources must be declared in manifest config');
 
 for (const permission of ['storage', 'alarms', 'nativeMessaging', 'sidePanel']) {

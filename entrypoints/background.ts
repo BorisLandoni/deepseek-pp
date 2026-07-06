@@ -90,7 +90,8 @@ import {
   waitForFileReady,
 } from '../core/deepseek/adapter';
 import { buildPromptAugmentation } from '../core/prompt';
-import { extractToolCalls } from '../core/interceptor/tool-parser';
+import { extractToolCalls, stripToolCalls } from '../core/interceptor/tool-parser';
+import { DEFAULT_TOOL_DESCRIPTORS, createToolInvocationCatalog } from '../core/tool/invocation';
 import type { WebSearchToolName } from '../core/tool/web-search';
 import type { BackgroundConfig, DeepSeekTheme, GitHubSkillImportRequest, GitHubSkillSource, Memory, ModelType, NewMemory, PetConfig, Skill, SyncConfig, SyncCounts, SystemPromptPreset, ToolCall, ToolDescriptor, ToolExecutionRecord, ToolResult } from '../core/types';
 import type { McpServerCreateInput, McpServerUpdateInput } from '../core/mcp/types';
@@ -1403,6 +1404,17 @@ async function runSidepanelToolLoop(
   const allExecutions: ToolExecutionRecord[] = [];
   let currentInput = input;
 
+  // The sidebar renders assistant text verbatim (ChatMessage.tsx), so tool-call XML must be
+  // stripped BEFORE broadcasting — otherwise a <web_search>/<memory_save> block the model emits
+  // shows raw. Strip against a broad catalog (built-in + enabled) so even a tool that is emitted
+  // but NOT enabled (hence not executed) is still hidden from view. Execution below still uses
+  // only the enabled `toolDescriptors`.
+  const displayDescriptors = [
+    ...DEFAULT_TOOL_DESCRIPTORS,
+    ...toolDescriptors.filter((d) => !DEFAULT_TOOL_DESCRIPTORS.some((x) => x.id === d.id)),
+  ];
+  const toDisplay = (text: string) => stripToolCallsForSidebar(text, displayDescriptors);
+
   for (let step = 0; step < MAX_STEPS; step++) {
     let accumulated = '';
     const turn = await submitPromptStreaming(currentInput, {
@@ -1411,7 +1423,7 @@ async function runSidepanelToolLoop(
         // Broadcast the full accumulated text (not just the delta) so the frontend
         // can simply replace the last message on each chunk — immune to any ordering
         // or accumulation issues that could cause dropped first characters.
-        broadcastChatChunk({ text: fullText, done: false }, excludeTabId);
+        broadcastChatChunk({ text: toDisplay(fullText), done: false }, excludeTabId);
       },
     });
 
@@ -1431,7 +1443,7 @@ async function runSidepanelToolLoop(
     const toolCalls = extractToolCalls(fullText, { descriptors: toolDescriptors });
 
     if (toolCalls.length === 0) {
-      broadcastChatChunk({ text: fullText, done: true }, excludeTabId);
+      broadcastChatChunk({ text: toDisplay(fullText), done: true }, excludeTabId);
       return;
     }
 
@@ -1474,4 +1486,22 @@ function broadcastChatChunk(
   excludeTabId?: number,
 ) {
   chrome.runtime.sendMessage({ type: 'CHAT_STREAM_CHUNK', ...chunk }).catch(() => {});
+}
+
+/**
+ * Removes tool-call XML from assistant text before it is shown in the sidebar chat, which renders
+ * text verbatim. Strips complete <tool>...</tool> blocks and also hides a trailing, not-yet-closed
+ * tool-open block so the raw tag never flashes while the closing tag is still streaming.
+ */
+function stripToolCallsForSidebar(text: string, descriptors: ToolDescriptor[]): string {
+  let out = stripToolCalls(text, { descriptors });
+  const catalog = createToolInvocationCatalog(descriptors);
+  for (const name of catalog.invocationNames) {
+    const openIdx = out.indexOf(`<${name}>`);
+    if (openIdx !== -1 && out.indexOf(`</${name}>`, openIdx) === -1) {
+      out = out.slice(0, openIdx).replace(/[ \t\r\n]+$/, '');
+      break;
+    }
+  }
+  return out;
 }

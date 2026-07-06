@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.28] - 2026-07-06
+
+### Fixed
+- **Tool-call XML no longer leaks in the sidebar chat**: `<web_search>` / `<memory_save>` blocks the model emits could appear verbatim in the DeepSeek++ sidebar — a separate renderer from the DeepSeek page fixed in 0.7.27. The sidebar tool loop now strips tool XML at the source before displaying each streamed chunk, using a broad catalog (built-in + enabled tools), so even a tool that is emitted but not enabled (and therefore not executed) is hidden, and a not-yet-closed tag no longer flashes while streaming. Tool execution is unchanged (still uses only the enabled tools).
+
+---
+
 ## [0.7.27] - 2026-07-06
 
 ### Fixed

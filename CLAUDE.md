@@ -173,18 +173,26 @@ the code):
    executed and DeepSeek renders it raw. The prompt already warns "never put tool XML in a
    thinking section" precisely because of this.
 
-**Status — fixed in this branch:**
-- History cleanup now **joins all fragments** before stripping and reads/writes `content` **or**
-  `text` (`stripMessageToolCalls` / `sanitizeStoredMessageInternalPrompt`,
-  `core/interceptor/history-cleanup.ts`), plus `getFragmentText`/`setFragmentText` helpers —
-  removes the reload/persistence case (family #1).
-- The DOM scrubber now scans the **concatenation** of all text nodes and maps the surviving text
+> ⚠️ **Two independent rendering surfaces.** The raw tag can appear on the **DeepSeek page**
+> (main-world hook + `content.ts` DOM scrubber) OR in the **DeepSeek++ sidebar chat**
+> (`background.ts` `runSidepanelToolLoop` → `ChatMessage.tsx`, which renders `message.text`
+> verbatim via ReactMarkdown). These are separate code paths — a fix on one does **not** cover the
+> other. The user-reported `web_search`/`memory_save` leaks were on the **sidebar**.
+
+**Status — fixed:**
+- **Sidebar chat** (the reported surface): `runSidepanelToolLoop` now strips tool XML at the source
+  via `stripToolCallsForSidebar` (built-in ∪ enabled descriptors) before every `broadcastChatChunk`,
+  so a `<web_search>`/`<memory_save>` block the model emits — even one not in the enabled set (hence
+  not executed) — is hidden, and a not-yet-closed tag does not flash mid-stream
+  (`entrypoints/background.ts`). Execution still uses only the enabled descriptors.
+- **Page** history cleanup now **joins all fragments** before stripping and reads/writes `content`
+  **or** `text` (`stripMessageToolCalls` / `sanitizeStoredMessageInternalPrompt`,
+  `core/interceptor/history-cleanup.ts`) — removes the reload/persistence case.
+- **Page** DOM scrubber now scans the **concatenation** of all text nodes and maps surviving text
   back per node (`stripToolCallTextNodes` + `computeToolCallSpans` / `subtractSpans`,
   `entrypoints/content.ts`) — strips tags split across text nodes, preserving structure.
 
-Remaining defense-in-depth notes (unchanged, low impact): the end-of-stream `flush`
-(`fetch-hook.ts:856-868`) can still emit a held partial-open at true end-of-stream, and
-`interceptHistoryResponse` (`fetch-hook.ts:1140`) is gated on a `json` content-type. The
-"not-executed" half of the `web_search` case (tag in a channel `extractToolCalls` never scans) is
-out of scope: the scrubber now **hides** it, but re-executing a mis-channeled tag would require
-scanning the reasoning stream.
+Remaining defense-in-depth notes (low impact): the page end-of-stream `flush`
+(`fetch-hook.ts:856-868`) can still emit a held partial-open at true end-of-stream;
+`interceptHistoryResponse` (`fetch-hook.ts:1140`) is gated on a `json` content-type; and sidebar
+*execution* of a tool the user disabled is intentionally not forced — only its display is hidden.

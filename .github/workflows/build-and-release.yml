@@ -34,7 +34,7 @@ jobs:
 
       - name: Read version from package.json
         id: pkg
-        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Extract changelog section for this version
         id: changelog
@@ -47,7 +47,7 @@ jobs:
           fi
           # Write to a temp file to handle multiline properly
           echo "$NOTES" > /tmp/release_notes.md
-          echo "notes_file=/tmp/release_notes.md" >> $GITHUB_OUTPUT
+          echo "notes_file=/tmp/release_notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Delete existing release with same tag (if any)
         continue-on-error: true

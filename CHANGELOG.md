@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.29] - 2026-07-06
+
+### Fixed
+- **Sidebar chat: leaked tool-call XML now also cleared from the persisted transcript**: 0.7.28 stripped tool XML from live broadcasts, but the sidebar saves and restores the chat transcript verbatim (`chrome.storage`), so a `<web_search>` / `<memory_save>` block already in the history kept reappearing on every reopen/reload. `ChatMessage` now strips tool XML at render time, and the transcript is sanitized when restored (which also purges the raw copy from storage). This closes the remaining paths — including messages captured by older builds and tags the source-side strip did not catch.
+
+---
+
 ## [0.7.28] - 2026-07-06
 
 ### Fixed

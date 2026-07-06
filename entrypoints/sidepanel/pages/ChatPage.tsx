@@ -3,6 +3,8 @@ import { useLanguage } from '../../../core/i18n/context';
 import type { ChatMessage as ChatMessageType, Skill } from '../../../core/types';
 import ChatMessage from '../components/ChatMessage';
 import { consumePendingText, onPendingText } from '../pending-text';
+import { stripToolCalls } from '../../../core/interceptor/tool-parser';
+import { DEFAULT_TOOL_DESCRIPTORS } from '../../../core/tool/invocation';
 
 type NoticeMessage = { role: 'notice'; text: string };
 type DisplayMessage = ChatMessageType | NoticeMessage;
@@ -51,7 +53,16 @@ export default function ChatPage() {
     chrome.storage.local.get(CHAT_MESSAGES_KEY)
       .then((data) => {
         const saved = data[CHAT_MESSAGES_KEY];
-        if (Array.isArray(saved) && saved.length > 0) setMessages(saved as DisplayMessage[]);
+        if (Array.isArray(saved) && saved.length > 0) {
+          // Sanitize any tool-call XML persisted by an older build so it is not restored (and
+          // re-rendered) raw. The persist effect below then rewrites the cleaned transcript,
+          // purging the raw copy from storage.
+          setMessages((saved as DisplayMessage[]).map((m) =>
+            m.role === 'assistant'
+              ? { ...m, text: stripToolCalls(m.text, { descriptors: DEFAULT_TOOL_DESCRIPTORS }) }
+              : m,
+          ));
+        }
       })
       .catch(() => {})
       .finally(() => setHydrated(true));

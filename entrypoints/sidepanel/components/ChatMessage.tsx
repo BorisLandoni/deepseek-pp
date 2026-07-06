@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { ChatMessage as ChatMessageType } from '../../../core/types';
 import { useLanguage } from '../../../core/i18n/context';
+import { stripToolCalls } from '../../../core/interceptor/tool-parser';
+import { DEFAULT_TOOL_DESCRIPTORS } from '../../../core/tool/invocation';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -11,6 +13,13 @@ interface ChatMessageProps {
 export default function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   const { language } = useLanguage();
   const isUser = message.role === 'user';
+  // The sidebar renders assistant text verbatim and restores the persisted transcript raw
+  // (ChatPage.tsx). Any tool-call XML that ever reached message.text — a pre-fix history entry, a
+  // tag the source-side strip missed, or one restored from storage — would re-render raw here.
+  // Strip at the render boundary so no path can surface it. User bubbles are shown as-is.
+  const displayText = isUser
+    ? message.text
+    : stripToolCalls(message.text, { descriptors: DEFAULT_TOOL_DESCRIPTORS });
   const [copied, setCopied] = useState(false);
   const proseRef = useRef<HTMLDivElement>(null);
 
@@ -26,7 +35,7 @@ export default function ChatMessage({ message, isStreaming }: ChatMessageProps) 
     const node = proseRef.current;
     const html = node?.innerHTML ?? '';
     // Plain fallback: rendered text (no markdown symbols) so plain-text targets stay clean.
-    const plain = node?.innerText ?? message.text;
+    const plain = node?.innerText ?? displayText;
 
     // Preferred path: write BOTH text/html (keeps bold, headings, lists when pasted into
     // rich editors like Gmail/Word/WordPress) and text/plain (for plain fields).
@@ -63,14 +72,14 @@ export default function ChatMessage({ message, isStreaming }: ChatMessageProps) 
     }
 
     try {
-      await navigator.clipboard.writeText(message.text);
+      await navigator.clipboard.writeText(displayText);
       markCopied();
     } catch {
       /* ignore */
     }
   };
 
-  const showCopy = !isUser && !isStreaming && message.text.trim().length > 0;
+  const showCopy = !isUser && !isStreaming && displayText.trim().length > 0;
 
   return (
     <div className={`group flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-3`}>
@@ -88,7 +97,7 @@ export default function ChatMessage({ message, isStreaming }: ChatMessageProps) 
             ref={proseRef}
             className="prose prose-sm max-w-none [&_pre]:overflow-x-auto [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:bg-[var(--ds-bg)] [&_code]:text-sm"
           >
-            <ReactMarkdown>{message.text}</ReactMarkdown>
+            <ReactMarkdown>{displayText}</ReactMarkdown>
           </div>
         )}
         {isStreaming && !isUser && (

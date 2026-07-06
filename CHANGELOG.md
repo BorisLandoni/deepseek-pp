@@ -6,6 +6,17 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.27] - 2026-07-06
+
+### Fixed
+- **Tool-call XML no longer leaks into answers**: `<memory_save>` / `<web_search>` blocks could sometimes appear verbatim in a reply. Two causes fixed: (1) history cleanup now strips tool XML across the whole reassembled fragment text instead of per-fragment, so a block straddling a persisted fragment boundary no longer survives and reappears on reload; (2) the DOM scrubber now scans the concatenation of all text nodes (mapping the surviving text back per node), so a tag split across DOM text nodes (`<memory` + `_save>`) is stripped while document structure is preserved. Fragment cleanup also reads/writes both `content` and `text`.
+
+### Changed
+- **Build tooling / CI hardening**: fixed a Windows-only path bug in four smoke scripts (`new URL('..').pathname` → `fileURLToPath`) that reported every file as missing; re-baselined the `prompt:freeze` hashes for the EN/IT prompts; made the automation-contract smoke assert the automation tab by stable key instead of the removed Chinese label; aligned `manifest-policy` with the shipped permission model (broad required host permissions, `scripting` + `tabs`, both used) plus usage cross-checks.
+- Added `CLAUDE.md` documenting the architecture, the tool-call pipeline and these fixes.
+
+---
+
 ## [0.7.26] - 2026-06-06
 
 ### Added

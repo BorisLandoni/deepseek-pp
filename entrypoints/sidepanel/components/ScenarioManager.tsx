@@ -82,7 +82,7 @@ export default function ScenarioManager() {
               <button
                 onClick={() => saveTemplate(s)}
                 className="text-xs px-2 py-1 rounded"
-                style={{ background: 'var(--ds-accent)', color: '#fff' }}
+                style={{ background: 'var(--ds-blue)', color: 'var(--ds-text-on-primary)' }}
               >
                 {t.scenarioSave}
               </button>
@@ -136,7 +136,7 @@ export default function ScenarioManager() {
           <button
             onClick={handleAdd}
             className="text-xs px-2 py-1 rounded"
-            style={{ background: 'var(--ds-accent)', color: '#fff' }}
+            style={{ background: 'var(--ds-blue)', color: 'var(--ds-text-on-primary)' }}
           >
             {t.scenarioAdd}
           </button>

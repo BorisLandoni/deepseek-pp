@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.34] - 2026-07-07
+
+### Fixed
+- **Buttons no longer turn invisible when active**: the "Ask about page" toggle vanished when switched on, and the Send button (plus the Scenario add/save buttons) relied on a CSS variable `--ds-accent` that is **not defined anywhere**, so their background was transparent and the white label became invisible. All of these now use the defined primary colour (`--ds-blue` + `--ds-text-on-primary`), so an active toggle is a clearly visible solid-blue button with a check, in both light and dark themes.
+
+---
+
 ## [0.7.33] - 2026-07-07
 
 ### Added

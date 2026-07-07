@@ -771,9 +771,9 @@ export default function ChatPage() {
           aria-pressed={usePage}
           className="px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1.5 border transition-colors"
           style={{
-            background: usePage ? 'var(--ds-accent)' : 'var(--ds-surface)',
-            color: usePage ? '#fff' : 'var(--ds-text-secondary)',
-            borderColor: usePage ? 'var(--ds-accent)' : 'var(--ds-border)',
+            background: usePage ? 'var(--ds-blue)' : 'var(--ds-surface)',
+            color: usePage ? 'var(--ds-text-on-primary)' : 'var(--ds-text-secondary)',
+            borderColor: usePage ? 'var(--ds-blue)' : 'var(--ds-border)',
           }}
           title={language === 'it' ? 'Se attivo, le tue domande usano il contenuto della pagina aperta nel browser' : 'When on, your questions use the content of the page open in the browser'}
         >
@@ -919,7 +919,7 @@ export default function ChatPage() {
             onClick={sendMessage}
             disabled={isStreaming || (!inputText.trim() && attachments.length === 0)}
             className="self-end px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40"
-            style={{ background: 'var(--ds-accent)', color: '#fff' }}
+            style={{ background: 'var(--ds-blue)', color: 'var(--ds-text-on-primary)' }}
           >
             {isStreaming ? t.chatSending : t.chatSend}
           </button>

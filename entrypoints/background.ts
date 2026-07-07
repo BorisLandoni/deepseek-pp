@@ -1654,7 +1654,7 @@ async function runSidepanelToolLoop(
       `<${e.name}_result>\n${JSON.stringify(e.result)}\n</${e.name}_result>`
     ).join('\n');
 
-    const continuationPrompt = `[TOOL_RESULTS]\n${toolResultsText}\n[/TOOL_RESULTS]\n\nPlease continue your answer based on the above tool execution results.`;
+    const continuationPrompt = `[TOOL_RESULTS]\n${toolResultsText}\n[/TOOL_RESULTS]\n\nNow write your final answer for the user using these tool results. IMPORTANT: reply in the SAME language the user used in their original question — do not switch to English.`;
 
     // A PoW answer is single-use per completion request; reusing the initial one for the
     // continuation can make DeepSeek silently stall the follow-up stream (the reported freeze).

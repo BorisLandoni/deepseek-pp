@@ -10,7 +10,7 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // Chinese, so these hashes reflect the current EN/IT prompt sources. Re-run and update after any
 // intentional edit to core/constants.ts, core/prompt/augmentation.ts, or core/inline-agent/prompt.ts.
 const EXPECTED_HASHES = {
-  systemTemplateChat: '0142ccc4280cbf8b624a03049a159f5bb39a9e9e0640b9b54751e6e88063ddfb',
+  systemTemplateChat: 'f674c85681080136250d2b9c342f4ca34b99e4d1557bd7ab02f00ffb8637b233',
   systemTemplateThinking: '30241a565deba2c8c43dd3116aa99ec40936730361cc3bee7dd9e0c2808eee79',
   memoryToolSchemas: '3a04b9efec1d0e78392c79fe582e028b343451e092e6630a59136eafb52fb982',
   promptAugmentationBuild: '1b42d5b8df743388dfb86ee83e055e00a56fb5389bd7df1afd961c57b45b2335',

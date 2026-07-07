@@ -207,9 +207,19 @@ export default function ChatPage() {
     return () => { chrome.runtime.onMessage.removeListener(handler); clearStreamWatchdog(); };
   }, []);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom — but only when the user is already near the bottom. This lets you scroll
+  // up to read earlier text while the model is still streaming without being yanked back down. When
+  // you scroll back to the bottom, auto-follow resumes; sending a new message also re-sticks.
+  const stickToBottomRef = useRef(true);
+  const handleListScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  };
   useEffect(() => {
-    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+    if (stickToBottomRef.current && listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
   }, [messages]);
 
   // --- Skill autocomplete logic ---
@@ -263,6 +273,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: 'user', text: displayText }]);
     setIsStreaming(true);
     setError(null);
+    stickToBottomRef.current = true; // sending re-sticks to the bottom so you see your message + reply
     armStreamWatchdog();
     chrome.runtime.sendMessage({
       type: 'CHAT_SUBMIT_PROMPT',
@@ -633,7 +644,7 @@ export default function ChatPage() {
       </div>
 
       {/* Messages */}
-      <div ref={listRef} className="flex-1 overflow-y-auto p-3">
+      <div ref={listRef} onScroll={handleListScroll} className="flex-1 overflow-y-auto p-3">
         {messages.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full gap-1.5">
             <div className="text-xs" style={{ color: 'var(--ds-text-tertiary)' }}>

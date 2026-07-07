@@ -6,6 +6,14 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.31] - 2026-07-07
+
+### Fixed
+- **Sidebar replies now stay in the user's language**: after a web search, the sidebar could answer in English even to an Italian question. Cause: the internal "continue your answer" prompt sent after a tool runs was in English (and nothing instructed the model to mirror the user's language), so the model followed that language. The continuation prompt now explicitly tells the model to reply in the same language as the user's original question, and a language rule was added to the chat system prompt ("always reply in the same language the user writes in").
+- **Chat no longer force-scrolls to the bottom while streaming**: the transcript pinned itself to the bottom on every streamed chunk, so scrolling up to re-read earlier text while the model was still writing was impossible. It now auto-follows only when you are already near the bottom — scroll up to read freely, scroll back down (or send a new message) to resume auto-follow.
+
+---
+
 ## [0.7.30] - 2026-07-07
 
 ### Fixed

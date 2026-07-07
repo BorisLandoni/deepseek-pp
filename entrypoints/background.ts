@@ -100,6 +100,10 @@ import type { AutomationCreateInput, AutomationRunnerRequest, AutomationRunnerRe
 const DEEPSEEK_HOME_URL = 'https://chat.deepseek.com/';
 let chatSessionId: string | null = null;
 let chatParentMessageId: number | null = null;
+// Guards against two sidebar tool loops running at once (which would corrupt the shared
+// chatSessionId / chatParentMessageId). This can happen if the client-side stall watchdog
+// re-enables the composer while a loop is in fact still alive and the user re-submits.
+let sidepanelSubmitInFlight = false;
 
 // Storage keys for persisting chat session across service worker restarts.
 // Chrome MV3 service workers are killed after ~30s of inactivity; without this,
@@ -1252,13 +1256,23 @@ async function handleChatSubmitPrompt(
   excludeTabId?: number,
   options?: { skipAutoFetch?: boolean; images?: { name: string; dataUrl: string }[] },
 ) {
-  const headers = await loadClientHeadersFromStorage();
-  if (!headers) {
-    broadcastChatChunk({ text: '', done: true, error: 'Please log in to chat.deepseek.com and send a message first to obtain authentication credentials' }, excludeTabId);
+  // Reject a second submit while one is still running (see sidepanelSubmitInFlight). Prevents two
+  // concurrent tool loops from interleaving into and corrupting the shared session state — which
+  // becomes reachable if the client-side stall watchdog re-enables the composer while a loop is
+  // in fact still alive.
+  if (sidepanelSubmitInFlight) {
+    broadcastChatNotice('⚠️ Attendi il completamento della risposta in corso prima di inviare un nuovo messaggio.', excludeTabId);
     return;
   }
+  sidepanelSubmitInFlight = true;
 
   try {
+    const headers = await loadClientHeadersFromStorage();
+    if (!headers) {
+      broadcastChatChunk({ text: '', done: true, error: 'Please log in to chat.deepseek.com and send a message first to obtain authentication credentials' }, excludeTabId);
+      return;
+    }
+
     // Restore session/threading state that may have been lost when the service worker was restarted.
     // Chrome MV3 kills service workers after ~30s of inactivity; this ensures conversation context
     // is maintained across those restarts.
@@ -1268,7 +1282,10 @@ async function handleChatSubmitPrompt(
     const isFirstTurn = !chatSessionId || chatParentMessageId === null;
 
     if (!chatSessionId) {
-      chatSessionId = await createChatSession(headers);
+      chatSessionId = await guardHandshake(
+        createChatSession(headers),
+        'Timeout nella creazione della sessione DeepSeek. Controlla la connessione e riprova.',
+      );
       chatParentMessageId = null;
       persistChatState(); // Persist new session ID immediately
     }
@@ -1359,7 +1376,10 @@ async function handleChatSubmitPrompt(
       }
     }
 
-    const powHeaders = await createPowHeaders(headers);
+    const powHeaders = await guardHandshake(
+      createPowHeaders(headers),
+      'Timeout nel calcolo di sicurezza (PoW) di DeepSeek. Riprova.',
+    );
 
     const initialInput = {
       chatSessionId,
@@ -1382,6 +1402,137 @@ async function handleChatSubmitPrompt(
       chatParentMessageId = null;
       persistChatState(); // Clear persisted state on auth/session errors
     }
+  } finally {
+    sidepanelSubmitInFlight = false;
+  }
+}
+
+// Idle/stall watchdog for the sidebar tool loop. DeepSeek's SSE stream only ends when the server
+// closes it; the `submitPromptStreaming` call would otherwise carry no signal/timeout, so a stream
+// that opens (HTTP 200) but never finalizes — a stalled continuation after a tool ran, or the
+// server holding the connection open — would hang forever with no `done` and freeze the sidebar.
+// Two thresholds: a longer FIRST-BYTE window absorbs connect + queue + prefill latency before any
+// bytes arrive; once the stream is alive, a shorter inter-activity IDLE applies. Liveness is any
+// delivered bytes (onActivity), not just response-text growth, so a slow first token is not a stall.
+const SIDEPANEL_FIRST_BYTE_TIMEOUT_MS = 60_000;
+const SIDEPANEL_IDLE_TIMEOUT_MS = 45_000;
+// Per-tool execution cap on the SW side. executeRuntimeToolCall (esp. an MCP http/sse tool whose
+// server stalls after sending headers) can otherwise never resolve, parking the loop with no `done`.
+const SIDEPANEL_TOOL_TIMEOUT_MS = 60_000;
+// Cap on the first-turn DeepSeek handshake calls (session create, PoW challenge) so a stalled
+// endpoint surfaces a clear error instead of hanging before any stream — or any feedback — exists.
+const SIDEPANEL_HANDSHAKE_TIMEOUT_MS = 30_000;
+
+/** Localized (IT) status line shown as a notice banner while a tool is running. */
+function describeToolRunning(call: ToolCall): string {
+  const payload = call.payload as Record<string, unknown> | undefined;
+  if (call.name === 'web_search') {
+    const q = typeof payload?.query === 'string' ? payload.query.trim() : '';
+    return q ? `🔍 Cerco sul web: «${q}»…` : '🔍 Cerco sul web…';
+  }
+  if (call.name === 'web_fetch') {
+    const u = typeof payload?.url === 'string' ? payload.url.trim() : '';
+    return u ? `🌐 Leggo la pagina: ${u}…` : '🌐 Leggo la pagina…';
+  }
+  if (call.name.startsWith('memory')) return '💾 Aggiorno la memoria…';
+  return `🔧 Eseguo: ${call.name}…`;
+}
+
+/** Resolves with the promise's value, or `fallback` if it does not settle within `ms`. Never rejects. */
+function withDeadline<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) { settled = true; resolve(fallback); }
+    }, ms);
+    promise.then(
+      (value) => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } },
+      () => { if (!settled) { settled = true; clearTimeout(timer); resolve(fallback); } },
+    );
+  });
+}
+
+/**
+ * Resolves/rejects with the promise, but rejects with Error('__timeout__') if it does not settle
+ * within `ms`. Unlike withDeadline, a real rejection propagates (so the caller can tell a timeout
+ * from a genuine error). The underlying work is not cancelled — its late result is simply ignored.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) { settled = true; reject(new Error('__timeout__')); }
+    }, ms);
+    promise.then(
+      (value) => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } },
+      (err) => { if (!settled) { settled = true; clearTimeout(timer); reject(err); } },
+    );
+  });
+}
+
+/**
+ * Guards a first-turn DeepSeek handshake call with a timeout. On timeout it throws `timeoutMessage`
+ * (a clear, user-facing reason) so handleChatSubmitPrompt's catch broadcasts {done:true,error} and
+ * the UI unfreezes; a genuine error propagates unchanged.
+ */
+async function guardHandshake<T>(promise: Promise<T>, timeoutMessage: string): Promise<T> {
+  try {
+    return await withTimeout(promise, SIDEPANEL_HANDSHAKE_TIMEOUT_MS);
+  } catch (err) {
+    if (err instanceof Error && err.message === '__timeout__') throw new Error(timeoutMessage);
+    throw err;
+  }
+}
+
+/**
+ * submitPromptStreaming wrapped with an idle-abort watchdog. The timer resets on every text
+ * chunk, so a healthy (even long) answer is never cut off — only a genuine stall trips it. On a
+ * stall the underlying fetch is aborted and a clear, user-facing error is thrown so the loop's
+ * caller can end the stream instead of hanging forever.
+ */
+async function streamSidepanelTurn(
+  input: Parameters<typeof submitPromptStreaming>[0],
+  onFullText: (fullText: string) => void,
+): Promise<Awaited<ReturnType<typeof submitPromptStreaming>>> {
+  const controller = new AbortController();
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  let sawActivity = false;
+  const armIdleTimer = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, sawActivity ? SIDEPANEL_IDLE_TIMEOUT_MS : SIDEPANEL_FIRST_BYTE_TIMEOUT_MS);
+  };
+  armIdleTimer();
+  try {
+    return await submitPromptStreaming(
+      input,
+      {
+        onActivity() {
+          sawActivity = true;
+          armIdleTimer();
+        },
+        onTextChunk(_newText: string, fullText: string) {
+          sawActivity = true;
+          armIdleTimer();
+          onFullText(fullText);
+        },
+      },
+      controller.signal,
+    );
+  } catch (err) {
+    if (timedOut) {
+      throw new Error(
+        sawActivity
+          ? 'La risposta si è interrotta: il servizio ha smesso di rispondere a metà. Riprova.'
+          : 'Nessuna risposta dal servizio entro 60 secondi. Riprova o riformula la richiesta.',
+      );
+    }
+    throw err;
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
   }
 }
 
@@ -1417,14 +1568,12 @@ async function runSidepanelToolLoop(
 
   for (let step = 0; step < MAX_STEPS; step++) {
     let accumulated = '';
-    const turn = await submitPromptStreaming(currentInput, {
-      onTextChunk(_newText: string, fullText: string) {
-        accumulated = fullText;
-        // Broadcast the full accumulated text (not just the delta) so the frontend
-        // can simply replace the last message on each chunk — immune to any ordering
-        // or accumulation issues that could cause dropped first characters.
-        broadcastChatChunk({ text: toDisplay(fullText), done: false }, excludeTabId);
-      },
+    const turn = await streamSidepanelTurn(currentInput, (fullText) => {
+      accumulated = fullText;
+      // Broadcast the full accumulated text (not just the delta) so the frontend
+      // can simply replace the last message on each chunk — immune to any ordering
+      // or accumulation issues that could cause dropped first characters.
+      broadcastChatChunk({ text: toDisplay(fullText), done: false }, excludeTabId);
     });
 
     // Only update the parent ID if the stream returned a valid response ID.
@@ -1436,6 +1585,14 @@ async function runSidepanelToolLoop(
     const fullText = accumulated || turn.assistantText;
 
     if (!fullText) {
+      // A tool already ran but the follow-up produced nothing — tell the user instead of
+      // leaving a bare, frozen intro line with no explanation.
+      if (allExecutions.length > 0) {
+        broadcastChatNotice(
+          '⚠️ Lo strumento è stato eseguito ma il modello non ha prodotto una risposta finale. Riprova o riformula la richiesta.',
+          excludeTabId,
+        );
+      }
       broadcastChatChunk({ text: '', done: true }, excludeTabId);
       return;
     }
@@ -1449,7 +1606,30 @@ async function runSidepanelToolLoop(
 
     const execs: ToolExecutionRecord[] = [];
     for (const call of toolCalls) {
-      const result = await executeRuntimeToolCall(call, 'sidepanel_chat');
+      // Feedback: execution used to be completely silent, so a slow or failing tool looked exactly
+      // like a freeze. Announce each tool right before it runs — a notice banner that does not
+      // disturb the streamed answer and that re-arms the client-side stall watchdog per tool.
+      broadcastChatNotice(describeToolRunning(call), excludeTabId);
+
+      // Bound each tool call so a hung tool (e.g. an MCP server that stalls after sending headers)
+      // cannot park the loop forever with no `done`. Both a timeout and a thrown error become a
+      // failed result the model can react to — the loop keeps going instead of hanging or dying.
+      let result: ToolResult;
+      try {
+        result = await withTimeout(executeRuntimeToolCall(call, 'sidepanel_chat'), SIDEPANEL_TOOL_TIMEOUT_MS);
+      } catch (err) {
+        const isTimeout = err instanceof Error && err.message === '__timeout__';
+        const detail = err instanceof Error ? err.message : String(err);
+        result = {
+          ok: false,
+          name: call.name,
+          summary: isTimeout
+            ? `Timeout: lo strumento "${call.name}" non ha risposto entro 60 secondi`
+            : `Errore nello strumento "${call.name}": ${detail}`,
+          error: { code: isTimeout ? 'tool_timeout' : 'tool_error', message: detail, retryable: true },
+        };
+      }
+
       execs.push({
         name: call.name,
         result: {
@@ -1461,6 +1641,12 @@ async function runSidepanelToolLoop(
           error: result.error,
         },
       });
+      // Surface failures immediately — otherwise the model's follow-up (or lack of one) is the
+      // only signal and the user cannot tell "the search failed" from "the app froze".
+      if (!result.ok) {
+        const reason = result.summary || result.error?.message || 'errore sconosciuto';
+        broadcastChatNotice(`⚠️ ${call.name}: ${reason}`, excludeTabId);
+      }
     }
     allExecutions.push(...execs);
 
@@ -1470,11 +1656,22 @@ async function runSidepanelToolLoop(
 
     const continuationPrompt = `[TOOL_RESULTS]\n${toolResultsText}\n[/TOOL_RESULTS]\n\nPlease continue your answer based on the above tool execution results.`;
 
+    // A PoW answer is single-use per completion request; reusing the initial one for the
+    // continuation can make DeepSeek silently stall the follow-up stream (the reported freeze).
+    // Mint a fresh one, but never let the refresh itself hang the loop — fall back to the
+    // existing headers if it does not resolve in time.
+    const refreshedPow = await withDeadline(
+      createPowHeaders(currentInput.clientHeaders),
+      15_000,
+      currentInput.powHeaders,
+    );
+
     currentInput = {
       ...currentInput,
       prompt: continuationPrompt,
       parentMessageId: chatParentMessageId,
       refFileIds: [], // images are referenced only on the first turn
+      powHeaders: refreshedPow,
     };
   }
 

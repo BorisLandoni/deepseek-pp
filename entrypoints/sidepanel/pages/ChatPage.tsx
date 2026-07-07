@@ -110,6 +110,32 @@ export default function ChatPage() {
       .catch(() => setHasToken(false));
   }, []);
 
+  // Client-side stall watchdog. The background tool loop guards its own streams, but an MV3
+  // service-worker restart mid-request can drop the whole flow with no `done` ever sent, which
+  // would leave the sidebar frozen on the blinking cursor forever. This is the last-resort net:
+  // if no chunk/notice arrives for a while, stop streaming and tell the user to retry. It is
+  // armed on submit and re-armed on every incoming activity; the timeout (90s) is deliberately
+  // longer than the background idle watchdog (40s) so a live worker's own error wins first.
+  const langRef = useRef(language);
+  useEffect(() => { langRef.current = language; }, [language]);
+  const streamWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearStreamWatchdog = () => {
+    if (streamWatchdogRef.current) { clearTimeout(streamWatchdogRef.current); streamWatchdogRef.current = null; }
+  };
+  const armStreamWatchdog = () => {
+    clearStreamWatchdog();
+    streamWatchdogRef.current = setTimeout(() => {
+      streamWatchdogRef.current = null;
+      setIsStreaming(false);
+      setMessages((prev) => [...prev, {
+        role: 'notice',
+        text: langRef.current === 'it'
+          ? '⚠️ Nessuna risposta dal servizio (l’estensione potrebbe essersi riavviata). Riprova.'
+          : '⚠️ No response from the service (the extension may have restarted). Please try again.',
+      }]);
+    }, 90_000);
+  };
+
   // Listen for streaming chunks
   useEffect(() => {
     const handler = (msg: { type: string; text?: string; done?: boolean; error?: string; hasToken?: boolean }) => {
@@ -122,6 +148,9 @@ export default function ChatPage() {
         return;
       }
       if (msg.type === 'CHAT_NOTICE' && typeof msg.text === 'string') {
+        // A notice means the worker is alive and working (e.g. a tool started) — reset the stall
+        // watchdog so a legitimately slow step (a web search) is not mistaken for a freeze.
+        armStreamWatchdog();
         // Insert a notice banner before any in-progress assistant message.
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -135,6 +164,7 @@ export default function ChatPage() {
       }
       if (msg.type === 'CHAT_STREAM_CHUNK') {
         if (msg.error) {
+          clearStreamWatchdog();
           setIsStreaming(false);
           // If it's an auth error, go back to the login screen
           if (msg.error.toLowerCase().includes('log in') || msg.error.toLowerCase().includes('auth') || msg.error.toLowerCase().includes('token') || msg.error.toLowerCase().includes('credential')) {
@@ -146,6 +176,7 @@ export default function ChatPage() {
           return;
         }
         if (msg.done) {
+          clearStreamWatchdog();
           setIsStreaming(false);
           // Final authoritative full text — replace the last assistant message.
           if (msg.text) {
@@ -159,6 +190,8 @@ export default function ChatPage() {
           }
           return;
         }
+        // Any streaming chunk is activity — reset the stall watchdog.
+        armStreamWatchdog();
         // Background now sends full accumulated text (not a delta), so we always
         // replace — not append — to avoid any character-dropping accumulation bugs.
         setMessages((prev) => {
@@ -171,7 +204,7 @@ export default function ChatPage() {
       }
     };
     chrome.runtime.onMessage.addListener(handler);
-    return () => chrome.runtime.onMessage.removeListener(handler);
+    return () => { chrome.runtime.onMessage.removeListener(handler); clearStreamWatchdog(); };
   }, []);
 
   // Auto-scroll to bottom
@@ -230,10 +263,11 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: 'user', text: displayText }]);
     setIsStreaming(true);
     setError(null);
+    armStreamWatchdog();
     chrome.runtime.sendMessage({
       type: 'CHAT_SUBMIT_PROMPT',
       payload: { text: fullText, skipAutoFetch: opts?.skipAutoFetch, images: opts?.images },
-    }).catch((err: Error) => { setError(err.message); setIsStreaming(false); });
+    }).catch((err: Error) => { clearStreamWatchdog(); setError(err.message); setIsStreaming(false); });
   };
 
   const pageErrorText = (error?: string) => {
@@ -430,6 +464,7 @@ export default function ChatPage() {
   };
 
   const newSession = () => {
+    clearStreamWatchdog();
     chrome.runtime.sendMessage({ type: 'CHAT_NEW_SESSION' }).catch(() => {});
     setMessages([]);
     setError(null);

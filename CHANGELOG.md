@@ -6,6 +6,17 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.30] - 2026-07-07
+
+### Fixed
+- **Sidebar chat no longer freezes when a tool runs**: after the model announced an action (e.g. "Cerco…"), the sidebar could hang forever on the blinking cursor with no result and no error. The tool executed, but the follow-up completion stream (the "continuation") had no timeout and only ended when the server closed it — a stream that opened but never finalized left the loop awaiting forever, so no "done" was ever sent. Fixed with layered guards: (1) a service-worker idle watchdog aborts a stalled stream (longer first-byte window, shorter inter-activity idle, re-armed by *any* stream activity so a slow first token isn't misread as a stall); (2) the first-turn handshake calls (session create, PoW) and each tool call are now time-bounded, so a stuck endpoint or tool surfaces a clear error instead of hanging; (3) the continuation now mints a fresh proof-of-work (reusing the single-use one could silently stall DeepSeek's follow-up); (4) a client-side stall net unfreezes the UI even if the service worker is killed mid-request; (5) a concurrency guard prevents a second submit from corrupting the shared session.
+- **Tool execution is no longer silent**: the sidebar now shows a status banner while a tool runs ("🔍 Cerco sul web: «…»", "🌐 Leggo la pagina…") and surfaces tool errors inline, so you can always tell what's happening instead of staring at a frozen cursor.
+
+### Changed
+- **Web search is no longer routed through China**: the built-in `web_search` tried `cn.bing.com` first, which was slow and returned China-oriented results for non-CN users. It now uses international Bing (`www.bing.com`) with the Italian market as the primary source, and **DuckDuckGo** (Italy region) as a non-Chinese fallback. `cn.bing.com` was removed entirely.
+
+---
+
 ## [0.7.29] - 2026-07-06
 
 ### Fixed

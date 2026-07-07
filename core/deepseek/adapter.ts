@@ -61,6 +61,10 @@ export interface SubmitPromptInput {
 export interface StreamCallbacks {
   onTextChunk?(text: string, fullText: string): void;
   onFinished?(): void;
+  // Fired on every stream read that delivers bytes, even non-response frames (message ids,
+  // keep-alives). Lets a caller's idle watchdog treat any liveness — not just response-text
+  // growth — as activity, so a slow-first-token or thinking phase is not misread as a stall.
+  onActivity?(): void;
 }
 
 export class DeepSeekAuthError extends Error {
@@ -446,6 +450,10 @@ async function readCompletionStreamWithCallbacks(
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+
+    // Any delivered bytes = the stream is alive; signal before parsing so an idle watchdog is
+    // re-armed even by frames that carry no response text (message ids, prefill keep-alives).
+    if (value && value.length) callbacks.onActivity?.();
 
     buffer += decoder.decode(value, { stream: true });
     const boundary = buffer.lastIndexOf('\n\n');

@@ -112,22 +112,27 @@ async function performWebSearch(call: ToolCall): Promise<ToolResult> {
     ? Math.min(Math.max(1, Math.floor(call.payload.topK)), 10)
     : 5;
 
-  // Try multiple Bing domains as fallback.
-  // Each domain times out in 8s; total stays under 20s.
-  const domains = ['cn.bing.com', 'www.bing.com'];
+  // Search providers, tried in order. International Bing first (fast, localized, and uses the
+  // proven b_algo parser), then DuckDuckGo as a fallback. No China endpoints (cn.bing.com was
+  // removed): it was slow and returned China-oriented results for non-CN users.
+  // Each provider times out in 8s; the overall guard below keeps the total bounded.
+  const providers: { label: string; run: () => Promise<SearchResult[]> }[] = [
+    { label: 'Bing', run: () => bingSearch('www.bing.com', query, topK) },
+    { label: 'DuckDuckGo', run: () => duckDuckGoSearch(query, topK) },
+  ];
   let lastError: string | null = null;
   const startTime = Date.now();
 
-  for (let i = 0; i < domains.length; i++) {
-    // Guard: if we've been searching for >18s, give up
+  for (const provider of providers) {
+    // Guard: if we've been searching too long already, give up.
     if (Date.now() - startTime > 18_000) {
       lastError = lastError || 'Search timed out (>18s)';
       break;
     }
     try {
-      const results = await bingSearch(domains[i], query, topK);
+      const results = await provider.run();
       if (results.length === 0) {
-        lastError = `${domains[i]} returned no parseable search results`;
+        lastError = `${provider.label} returned no parseable search results`;
         continue;
       }
       return {
@@ -136,14 +141,14 @@ async function performWebSearch(call: ToolCall): Promise<ToolResult> {
         summary: `Search complete, ${results.length} results found`,
         output: results as unknown as JsonValue,
         detail: results
-          .map((r, i) => `${i + 1}. [${r.title}](${r.url})\n   ${r.snippet}`)
+          .map((r, idx) => `${idx + 1}. [${r.title}](${r.url})\n   ${r.snippet}`)
           .join('\n'),
       };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
-      // On permission error don't retry — user needs to reload the extension
+      // A host-permission error won't be fixed by trying another provider — bail out.
       if (lastError.includes('opaque') || lastError.includes('status 0')) break;
-      // On other errors try the next domain
+      // Otherwise fall through to the next provider.
     }
   }
 
@@ -159,7 +164,7 @@ async function performWebSearch(call: ToolCall): Promise<ToolResult> {
     name: call.name,
     summary: hasNoParseableResults ? 'No search results' : 'Search failed',
     detail: isPermissionError
-      ? `The extension does not have permission to access Bing. Please reload the extension from dist/chrome-mv3, or confirm that cn.bing.com is listed under site access in chrome://extensions → DeepSeek++ details.`
+      ? `The extension does not have permission to reach the search engine. Please reload the extension from dist/chrome-mv3, or confirm broad site access under chrome://extensions → DeepSeek++ details.`
       : hasNoParseableResults
         ? `No parseable search results found: ${lastError}`
         : `Search failed: ${lastError}`,
@@ -180,6 +185,9 @@ async function bingSearch(domain: string, query: string, topK: number): Promise<
   try {
     url = new URL(`https://${domain}/search`);
     url.searchParams.set('q', query);
+    // Localize to the international IT market so a non-CN user gets fast, relevant results.
+    url.searchParams.set('mkt', 'it-IT');
+    url.searchParams.set('setlang', 'it');
   } catch {
     throw new Error(`Invalid search domain: ${domain}`);
   }
@@ -263,6 +271,88 @@ function parseBingResults(html: string, topK: number): SearchResult[] {
   }
 
   return results.slice(0, topK);
+}
+
+// Fallback provider: DuckDuckGo's no-JS HTML endpoint. Non-Chinese, privacy-friendly. Used only
+// when Bing returns nothing parseable, so its (occasionally rate-limited) responses never block.
+async function duckDuckGoSearch(query: string, topK: number): Promise<SearchResult[]> {
+  const url = new URL('https://html.duckduckgo.com/html/');
+  url.searchParams.set('q', query);
+  url.searchParams.set('kl', 'it-it'); // region: Italy
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8_000);
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok) {
+    if (response.status === 0) {
+      throw new Error('Host permission denied (opaque response) for duckduckgo.com');
+    }
+    throw new Error(`duckduckgo.com returned status ${response.status}`);
+  }
+
+  let html: string;
+  try {
+    html = await response.text();
+  } catch {
+    throw new Error('duckduckgo.com response body unreadable');
+  }
+  if (html.length < 200) {
+    throw new Error(`duckduckgo.com returned an empty or blocked response (${html.length} bytes)`);
+  }
+  return parseDuckDuckGoResults(html, topK);
+}
+
+function parseDuckDuckGoResults(html: string, topK: number): SearchResult[] {
+  const results: SearchResult[] = [];
+
+  // DuckDuckGo HTML results:
+  //   <a ... class="result__a" href="//duckduckgo.com/l/?uddg=<encoded target>">Title</a>
+  //   ... <a class="result__snippet" ...>Snippet</a>
+  const linkRegex = /<a[^>]*class="[^"]*\bresult__a\b[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = linkRegex.exec(html)) !== null && results.length < topK) {
+    const url = decodeDuckDuckGoUrl(match[1]);
+    const title = stripHtml(match[2]).replace(/\s+/g, ' ').trim();
+    if (!title || !url) continue;
+
+    // Snippet is the next result__snippet anchor after this title link.
+    const rest = html.slice(match.index);
+    const snip = /<a[^>]*class="[^"]*\bresult__snippet\b[^"]*"[^>]*>([\s\S]*?)<\/a>/i.exec(rest);
+    const snippet = snip ? stripHtml(snip[1]).replace(/\s+/g, ' ').trim() : '';
+
+    results.push({ title, url, snippet });
+  }
+
+  return results.slice(0, topK);
+}
+
+/** DuckDuckGo wraps result links in a redirect: //duckduckgo.com/l/?uddg=<encoded real URL>. */
+function decodeDuckDuckGoUrl(href: string): string {
+  let h = href;
+  if (h.startsWith('//')) h = 'https:' + h;
+  try {
+    const parsed = new URL(h);
+    const target = parsed.searchParams.get('uddg'); // URLSearchParams decodes the percent-encoding
+    return target || h;
+  } catch {
+    return h;
+  }
 }
 
 // ---------------------------------------------------------------------------

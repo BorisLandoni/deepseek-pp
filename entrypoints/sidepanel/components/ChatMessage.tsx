@@ -1,9 +1,44 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { ChatMessage as ChatMessageType } from '../../../core/types';
 import { useLanguage } from '../../../core/i18n/context';
 import { stripToolCalls } from '../../../core/interceptor/tool-parser';
 import { DEFAULT_TOOL_DESCRIPTORS } from '../../../core/tool/invocation';
+
+// A Chrome side panel cannot navigate itself to a web URL, so a plain <a href> click does nothing.
+// Open external links in a new browser tab instead (chrome.tabs.create, with a window.open fallback).
+function openExternalLink(href: string) {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      chrome.tabs.create({ url: href });
+      return;
+    }
+  } catch {
+    /* fall through to window.open */
+  }
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
+// Custom markdown renderers. Links (e.g. web-search results) must open in a new tab from the panel.
+const markdownComponents = {
+  a({ href, children }: { href?: string; children?: ReactNode }) {
+    const safe = typeof href === 'string' && /^(https?:|mailto:)/i.test(href);
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => {
+          if (!safe || !href) return;
+          e.preventDefault();
+          openExternalLink(href);
+        }}
+      >
+        {children}
+      </a>
+    );
+  },
+};
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -97,7 +132,7 @@ export default function ChatMessage({ message, isStreaming }: ChatMessageProps) 
             ref={proseRef}
             className="prose prose-sm max-w-none [&_pre]:overflow-x-auto [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:bg-[var(--ds-bg)] [&_code]:text-sm"
           >
-            <ReactMarkdown>{displayText}</ReactMarkdown>
+            <ReactMarkdown components={markdownComponents}>{displayText}</ReactMarkdown>
           </div>
         )}
         {isStreaming && !isUser && (

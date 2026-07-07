@@ -6,6 +6,13 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.32] - 2026-07-07
+
+### Fixed
+- **Links in the sidebar chat are now clickable**: a link showed the hand cursor but clicking did nothing — a Chrome side panel can't navigate itself to a web page, so a plain `<a href>` click is a no-op. Links (e.g. web-search results) now open in a **new browser tab** (`chrome.tabs.create`, with a `window.open` fallback), and only `http(s)`/`mailto` targets are opened.
+
+---
+
 ## [0.7.31] - 2026-07-07
 
 ### Fixed

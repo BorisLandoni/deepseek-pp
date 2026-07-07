@@ -6,6 +6,16 @@ Format: `## [version] - YYYY-MM-DD`
 
 ---
 
+## [0.7.33] - 2026-07-07
+
+### Added
+- **Drag & drop attachments**: drag files (images, PDF, text) anywhere onto the chat to attach them — a highlighted "Drop here to attach" overlay appears while dragging, and dropping runs the same import as the Attach button (vision upload for images, text extraction for PDF/text).
+
+### Changed
+- **Clearer chat toolbar**: the "Summarize page / language / Ask about page / Attach" controls were small and their selected state was ambiguous. They are now larger (12px), evenly styled chips; the summary-language picker sits in a bordered chip with a globe icon so it clearly reads as a choice; and the "Ask about page" toggle now fills with the accent colour and shows a check icon when ON, so its active state is unmistakable.
+
+---
+
 ## [0.7.32] - 2026-07-07
 
 ### Fixed
